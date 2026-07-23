@@ -1,25 +1,39 @@
 # Deployment Runbook
 
-This runbook documents the deployment contract for the Forge MVP. It is scoped to
-docs and devops configuration; the application source still needs to implement
-the routes and scripts referenced here.
+This runbook documents the deployment contract for the Forge MVP after the
+Python backend migration.
 
 ## Deployment Shape
 
-Forge deploys as one Render web service:
+Forge deploys as two Render web services:
+
+- `forge-api`: Python/FastAPI customer API and SDK-compatible backend.
+- `forge-web`: Next.js dashboard and temporary compatibility proxy routes.
+
+`forge-api`:
+
+- Runtime: Python
+- Build command: `pip install -e apps/api -e packages/forge`
+- Start command: `cd apps/api && uvicorn forge_api.main:app --host 0.0.0.0 --port $PORT`
+- Health check: `GET /health`
+- State: local Render disk for the current mock repository, then Supabase
+
+`forge-web`:
 
 - Runtime: Node
-- Framework: Next.js
 - Build command: `npm ci && npm run build`
 - Start command: `npm run start`
-- Health check: `GET /api/health`
-- State: external Supabase project
+- Health check: `GET /api/health`, proxied to `forge-api`
+
+Provider targets:
+
+- State: Supabase project once the persistence adapter is enabled
 - Remote compute: Modal service-user token
 - Serving adapter: Baseten API key and OpenAI-compatible base URL
 
-This keeps the first MVP deploy small while preserving the intended split from
-`plan.md`: Render hosts the control plane, Supabase stores product state and
-artifacts, Modal runs remote jobs, and Baseten serves model endpoints.
+This preserves the intended split from `plan.md`: Python owns the product API,
+Next.js owns the dashboard, Supabase stores product state and artifacts, Modal
+runs remote jobs, and Baseten serves model endpoints.
 
 ## Source Requirements
 
@@ -30,6 +44,8 @@ attempting a production deploy:
 {
   "scripts": {
     "dev": "next dev",
+    "api:dev": "cd apps/api && uvicorn forge_api.main:app --host 0.0.0.0 --port ${PORT:-8000} --reload",
+    "api:test": "cd apps/api && python -m pytest tests -q",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}"
   }
@@ -40,9 +56,12 @@ If the app enables Next.js standalone output with `output: "standalone"`, use a
 start script that runs `.next/standalone/server.js` with `PORT` and
 `HOSTNAME=0.0.0.0` instead.
 
-The application must also implement:
+The services must also implement:
 
-- `GET /api/health` for Render health checks.
+- `GET /health` on `forge-api` for Render health checks.
+- `GET /api/health` on `forge-web` as a compatibility proxy.
+- `NEXT_PUBLIC_API_BASE_URL` for browser calls from the dashboard.
+- `API_INTERNAL_BASE_URL` for server-side Next.js route proxies.
 - Server-side provider clients that read Modal, Baseten, Supabase secret, and
   database credentials only from server-side environment variables.
 - Browser Supabase clients that use only public Supabase values.
@@ -56,7 +75,8 @@ committed.
 
 Key groups:
 
-- App: `APP_URL`, `APP_SECRET`, `ENCRYPTION_KEY`, `LOG_LEVEL`
+- App: `APP_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `API_INTERNAL_BASE_URL`,
+  `FORGE_STATE_PATH`, `FORGE_ALLOWED_ORIGINS`
 - Supabase browser: `NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - Supabase server: `SUPABASE_SECRET_KEY`, optional
@@ -127,14 +147,23 @@ BASETEN_DEPLOYMENT_BASE_URL=https://model-<model-id>.api.baseten.co/environments
 2. In Render, create a new Blueprint from the repository.
 3. Confirm the Blueprint reads [render.yaml](../render.yaml).
 4. Fill every `sync: false` value in the Render dashboard.
-5. Deploy the `forge-mvp` web service.
-6. Verify the health check:
+5. Deploy `forge-api` and `forge-web`.
+6. Set `NEXT_PUBLIC_API_BASE_URL` and `API_INTERNAL_BASE_URL` on `forge-web` to
+   the deployed `forge-api` URL.
+7. Verify health checks:
 
 ```bash
-curl -fsS https://<render-service>.onrender.com/api/health
+curl -fsS https://<forge-api>.onrender.com/health
+curl -fsS https://<forge-web>.onrender.com/api/health
 ```
 
-7. Run a browser smoke test:
+8. Run smoke tests:
+
+```bash
+SMOKE_BASE_URL=https://<forge-api>.onrender.com npm run smoke
+```
+
+9. Run a browser smoke test:
 
 ```text
 Sign in or open dashboard -> create project -> start session -> submit sample job -> view checkpoint/eval status.
@@ -144,9 +173,10 @@ Sign in or open dashboard -> create project -> start session -> submit sample jo
 
 The deployment config was aligned with current docs for:
 
-- Next.js Node server deployment and standalone output.
-- Render Blueprint fields for Node web services, env vars, generated secrets,
-  service references, and health checks.
+- FastAPI route, CORS, and TestClient patterns.
+- Next.js Node server deployment and route handler proxying.
+- Render Blueprint fields for Python and Node web services, env vars, generated
+  secrets, disks, and health checks.
 - Supabase Next.js environment variables and server-only secret-key handling.
 - Modal service-user token environment variables.
 - Baseten OpenAI-compatible Model API and deployment endpoint shapes.

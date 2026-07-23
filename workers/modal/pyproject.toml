@@ -1,0 +1,10 @@
+[project]
+name = "forge-modal"
+version = "0.1.0"
+description = "Modal worker boundary for Forge training, sampling, eval, and sandbox jobs."
+requires-python = ">=3.11"
+dependencies = [
+  "modal>=1.0",
+  "pydantic>=2.10",
+]
+

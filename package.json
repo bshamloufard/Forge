@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "api:dev": "cd apps/api && uvicorn forge_api.main:app --host 0.0.0.0 --port ${PORT:-8000} --reload",
+    "api:test": "cd apps/api && python -m pytest tests -q",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "lint": "next lint",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:python": "python scripts/python_smoke.py"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
