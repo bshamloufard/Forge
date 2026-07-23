@@ -2,7 +2,7 @@ services:
   - type: web
     name: forge-tinkering-mvp
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health
