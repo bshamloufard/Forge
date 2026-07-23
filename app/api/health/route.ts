@@ -1,14 +1,9 @@
-import { NextResponse } from "next/server";
-import { getProviderHealth } from "@/lib/providers";
+import { proxyToPython } from "@/lib/python-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    service: "forge-tinkering-mvp",
-    timestamp: new Date().toISOString(),
-    providers: getProviderHealth()
-  });
+export async function GET(request: Request) {
+  return proxyToPython(request, "/api/health");
 }
+

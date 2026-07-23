@@ -32,6 +32,9 @@ import type {
 
 type ApiState = ForgeState & { providers: ProviderHealth };
 
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
+const apiPath = (path: string) => `${apiBase}${path}`;
+
 const nav = [
   ["Runs", Activity],
   ["Checkpoints", Archive],
@@ -57,14 +60,14 @@ export default function Home() {
   });
 
   async function refresh() {
-    const response = await fetch("/api/state", { cache: "no-store" });
+    const response = await fetch(apiPath("/api/state"), { cache: "no-store" });
     setState(await response.json());
   }
 
   async function mutate<T>(label: string, path: string, body?: unknown): Promise<T> {
     setBusy(label);
     try {
-      const response = await fetchWithRenderRetry(path, {
+      const response = await fetchWithRenderRetry(apiPath(path), {
         method: body ? "POST" : "GET",
         headers: body ? { "Content-Type": "application/json" } : undefined,
         body: body ? JSON.stringify(body) : undefined
@@ -153,7 +156,7 @@ export default function Home() {
               className="button ghost"
               onClick={async () => {
                 setBusy("reset");
-                await fetch("/api/state", { method: "DELETE" });
+                await fetch(apiPath("/api/state"), { method: "DELETE" });
                 await refresh();
                 setBusy(null);
               }}

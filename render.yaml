@@ -1,23 +1,19 @@
 services:
   - type: web
-    name: forge-tinkering-mvp
-    runtime: node
+    name: forge-api
+    runtime: python
     plan: free
-    buildCommand: npm ci && npm run build
-    startCommand: npm run start
-    healthCheckPath: /api/health
+    buildCommand: pip install -e apps/api -e packages/forge
+    startCommand: cd apps/api && uvicorn forge_api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
-      - key: NODE_VERSION
-        value: 24
-      - key: NEXT_TELEMETRY_DISABLED
-        value: "1"
+      - key: PYTHON_VERSION
+        value: 3.12.2
       - key: APP_ENV
         value: production
-      - key: APP_BASE_URL
-        sync: false
-      - key: NEXT_PUBLIC_SUPABASE_URL
-        sync: false
-      - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+      - key: FORGE_STATE_PATH
+        value: /var/data/forge/state.json
+      - key: FORGE_ALLOWED_ORIGINS
         sync: false
       - key: SUPABASE_URL
         sync: false
@@ -26,6 +22,8 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_DATABASE_URL
         sync: false
       - key: MODAL_TOKEN_ID
         sync: false
@@ -41,3 +39,34 @@ services:
         value: https://inference.baseten.co/v1
       - key: INTERNAL_API_KEY
         generateValue: true
+    disk:
+      name: forge-api-state
+      mountPath: /var/data/forge
+      sizeGB: 1
+
+  - type: web
+    name: forge-web
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: APP_ENV
+        value: production
+      - key: APP_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+      - key: API_INTERNAL_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false

@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server";
-import { readState } from "@/lib/store";
+import { proxyToPython } from "@/lib/python-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const state = await readState();
-  return NextResponse.json({ runs: state.runs });
+export async function GET(request: Request) {
+  return proxyToPython(request, "/v1/runs");
 }
+

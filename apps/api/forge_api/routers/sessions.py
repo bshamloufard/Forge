@@ -1,0 +1,32 @@
+from fastapi import APIRouter, Depends
+
+from forge_api.dependencies import get_repository
+from forge_api.models.requests import CreateSessionRequest
+from forge_api.services.store import StateRepository
+
+router = APIRouter(tags=["sessions"])
+
+
+@router.get("/v1/sessions")
+def get_sessions(repository: StateRepository = Depends(get_repository)) -> dict[str, object]:
+    return {"sessions": [session.model_dump() for session in repository.read().sessions]}
+
+
+@router.post("/v1/sessions")
+@router.post("/api/sessions")
+def create_session(
+    body: CreateSessionRequest,
+    repository: StateRepository = Depends(get_repository),
+) -> dict[str, object]:
+    result = repository.create_session(
+        name=body.name or f"{body.recipe} session",
+        model=body.model or body.baseModel or "qwen3-8b",
+        recipe=body.recipe,
+        target_steps=body.targetSteps,
+    )
+    return _dump(result)
+
+
+def _dump(result: dict[str, object]) -> dict[str, object]:
+    return {key: value.model_dump() if hasattr(value, "model_dump") else value for key, value in result.items()}
+

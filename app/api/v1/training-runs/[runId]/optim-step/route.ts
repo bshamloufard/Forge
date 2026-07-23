@@ -1,14 +1,13 @@
-import { NextResponse } from "next/server";
-import { optimStep } from "@/lib/store";
+import { proxyToPython } from "@/lib/python-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ runId: string }> }
 ) {
-  const params = await context.params;
-  const result = await optimStep(params.runId);
-  return NextResponse.json(result);
+  const { runId } = await context.params;
+  return proxyToPython(request, `/v1/training-runs/${runId}/optim-step`);
 }
+
