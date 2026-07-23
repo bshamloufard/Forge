@@ -18,15 +18,15 @@ const state = await request("/api/state");
 const run = state.runs[0];
 const session = state.sessions[0];
 
-await request("/api/training/forward_backward", {
+await request(`/api/v1/training-runs/${run.id}/forward-backward`, {
   method: "POST",
-  body: JSON.stringify({ runId: run.id, microbatches: 2 })
+  body: JSON.stringify({ microbatches: 2 })
 });
-await request("/api/training/optim_step", {
+await request(`/api/v1/training-runs/${run.id}/optim-step`, {
   method: "POST",
-  body: JSON.stringify({ runId: run.id })
+  body: JSON.stringify({})
 });
-const checkpoint = await request("/api/checkpoints", {
+const checkpoint = await request("/api/v1/checkpoints", {
   method: "POST",
   body: JSON.stringify({ runId: run.id })
 });
@@ -41,7 +41,7 @@ await request("/api/verify", {
     rubric: "correct, verified, evidence"
   })
 });
-await request("/api/deployments", {
+await request("/api/v1/deployments", {
   method: "POST",
   body: JSON.stringify({ checkpointId: checkpoint.checkpoint.id, target: "baseten" })
 });

@@ -251,16 +251,15 @@ export default function Home() {
                 sessions={state.sessions}
                 busy={busy}
                 onForward={(run) =>
-                  mutate("forward", "/api/training/forward_backward", {
-                    runId: run.id,
+                  mutate("forward", `/api/v1/training-runs/${run.id}/forward-backward`, {
                     microbatches: 4
                   })
                 }
                 onOptim={(run) =>
-                  mutate("optim", "/api/training/optim_step", { runId: run.id })
+                  mutate("optim", `/api/v1/training-runs/${run.id}/optim-step`, {})
                 }
                 onCheckpoint={(run) =>
-                  mutate("checkpoint", "/api/checkpoints", { runId: run.id })
+                  mutate("checkpoint", "/api/v1/checkpoints", { runId: run.id })
                 }
               />
             </Panel>
@@ -325,7 +324,7 @@ export default function Home() {
                 checkpoints={state.checkpoints}
                 busy={busy}
                 onDeploy={(checkpoint) =>
-                  mutate("deploy", "/api/deployments", {
+                  mutate("deploy", "/api/v1/deployments", {
                     checkpointId: checkpoint.id,
                     target: "baseten"
                   })
