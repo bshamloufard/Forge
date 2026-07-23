@@ -64,12 +64,12 @@ export default function Home() {
   async function mutate<T>(label: string, path: string, body?: unknown): Promise<T> {
     setBusy(label);
     try {
-      const response = await fetch(path, {
+      const response = await fetchWithRenderRetry(path, {
         method: body ? "POST" : "GET",
         headers: body ? { "Content-Type": "application/json" } : undefined,
         body: body ? JSON.stringify(body) : undefined
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(response.errorText);
       const payload = (await response.json()) as T;
       await refresh();
       return payload;
@@ -346,6 +346,27 @@ export default function Home() {
       </main>
     </div>
   );
+}
+
+async function fetchWithRenderRetry(path: string, init: RequestInit) {
+  let lastResponse: Response | null = null;
+  let lastText = "";
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(path, init);
+    if (response.ok) {
+      return Object.assign(response, { errorText: "" });
+    }
+    const text = await response.clone().text();
+    lastResponse = response;
+    lastText = text;
+    if (!(response.status === 404 && text.trim() === "Not Found")) {
+      return Object.assign(response, { errorText: text });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 450 * (attempt + 1)));
+  }
+
+  return Object.assign(lastResponse as Response, { errorText: lastText });
 }
 
 function Panel({

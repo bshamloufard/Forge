@@ -1,17 +1,26 @@
 const baseUrl = process.env.SMOKE_BASE_URL || "http://localhost:3000";
 
 async function request(path, options = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
-  });
-  if (!response.ok) {
-    throw new Error(`${options.method || "GET"} ${path} failed: ${response.status} ${await response.text()}`);
+  let last = null;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      }
+    });
+    const text = response.ok ? "" : await response.clone().text();
+    if (response.ok) return response.json();
+    last = { response, text };
+    if (!(response.status === 404 && text.trim() === "Not Found")) break;
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
-  return response.json();
+
+  throw new Error(
+    `${options.method || "GET"} ${path} failed: ${last.response.status} ${last.text}`
+  );
 }
 
 const state = await request("/api/state");
