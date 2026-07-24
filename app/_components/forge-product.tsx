@@ -81,8 +81,8 @@ const apiPath = (path: string) => path;
 
 const navigation = [
   ["Train", "/runs", Activity],
-  ["Evaluate", "/evaluate", BrainCircuit],
-  ["Deploy", "/deployments", Cloud]
+  ["Deploy", "/deployments", Cloud],
+  ["Evaluate", "/evaluate", BrainCircuit]
 ] as const;
 
 const pageLabels: Record<string, string> = {
