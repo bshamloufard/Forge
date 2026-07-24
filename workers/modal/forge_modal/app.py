@@ -126,6 +126,7 @@ def deploy_checkpoint_to_baseten(
     checkpoint_id: str,
     checkpoint_name: str,
     baseten_api_key: str,
+    wait_for_live: bool = False,
 ) -> dict[str, Any]:
     if not baseten_api_key.strip():
         raise ValueError("BASETEN_API_KEY is required")
@@ -147,23 +148,24 @@ def deploy_checkpoint_to_baseten(
 
     env = os.environ.copy()
     env["BASETEN_API_KEY"] = baseten_api_key
+    command = [
+        "baseten",
+        "model",
+        "push",
+        "--dir",
+        str(truss_dir),
+        "--output",
+        "json",
+        "--deployment-name",
+        deployment_name,
+        "--labels",
+        json.dumps({"source": "forge", "checkpoint_id": checkpoint_id, "run_id": run_id}),
+    ]
+    if wait_for_live:
+        command.extend(["--wait", "--deploy-timeout", "30m"])
+
     result = subprocess.run(
-        [
-            "baseten",
-            "model",
-            "push",
-            "--dir",
-            str(truss_dir),
-            "--output",
-            "json",
-            "--wait",
-            "--deploy-timeout",
-            "30m",
-            "--deployment-name",
-            deployment_name,
-            "--labels",
-            json.dumps({"source": "forge", "checkpoint_id": checkpoint_id, "run_id": run_id}),
-        ],
+        command,
         capture_output=True,
         env=env,
         text=True,

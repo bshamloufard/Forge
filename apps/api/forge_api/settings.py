@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     baseten_base_url: str = Field(default="https://inference.baseten.co/v1", alias="BASETEN_BASE_URL")
     baseten_model_id: str = Field(default="zai-org/GLM-5.2-Fast", alias="BASETEN_MODEL_ID")
     baseten_default_model: str | None = Field(default=None, alias="BASETEN_DEFAULT_MODEL")
+    baseten_deployment_wait: bool = Field(default=False, alias="BASETEN_DEPLOYMENT_WAIT")
 
     training_model_id: str = Field(default="sshleifer/tiny-gpt2", alias="FORGE_TRAINING_MODEL_ID")
     training_dataset_id: str = Field(default="Abirate/english_quotes", alias="FORGE_TRAINING_DATASET_ID")

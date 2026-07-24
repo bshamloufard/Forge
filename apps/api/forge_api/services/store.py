@@ -242,7 +242,7 @@ class StateRepository:
             id=create_id("dep"),
             checkpointId=checkpoint_id,
             target=target,  # type: ignore[arg-type]
-            status="live",
+            status=_deployment_status(provider_result.get("deployment_status")) if provider_result else "live",
             endpointUrl=endpoint_url,
             mode=endpoint["mode"],  # type: ignore[arg-type]
             artifactUri=checkpoint.artifactUri,
@@ -277,6 +277,13 @@ def _find_session(state: ForgeState, session_id: str) -> Session:
 
 def _string_or_none(value: object) -> str | None:
     return str(value) if value else None
+
+
+def _deployment_status(value: object) -> str:
+    status = str(value or "").lower()
+    if status in {"active", "live", "ready", "succeeded"}:
+        return "live"
+    return "deploying"
 
 
 def _latest_artifact_uri(run: TrainingRun) -> str | None:

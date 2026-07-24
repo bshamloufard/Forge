@@ -40,6 +40,7 @@ def deploy_checkpoint_to_baseten(settings: Settings, *, checkpoint: Checkpoint) 
         checkpoint_id=checkpoint.id,
         checkpoint_name=checkpoint.name,
         baseten_api_key=settings.baseten_api_key,
+        wait_for_live=settings.baseten_deployment_wait,
     )
 
 

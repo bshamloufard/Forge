@@ -78,6 +78,7 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
         return {
             "model_id": "model-custom",
             "deployment_id": "deployment-custom",
+            "deployment_status": "active",
             "deployment_name": "forge-custom",
             "predict_url": "https://model-custom.api.baseten.co/environments/production/predict",
             "logs_url": "https://app.baseten.co/models/model-custom/logs",
@@ -120,6 +121,7 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
     assert deployment["artifactUri"] == f"modal-volume://forge-checkpoints/{run_id}"
     assert deployment["providerModelId"] == "model-custom"
     assert deployment["providerDeploymentId"] == "deployment-custom"
+    assert deployment["status"] == "live"
 
     invoked = client.post(f"/v1/deployments/{deployment['id']}/invoke", json={"prompt": "Hello custom"})
     assert invoked.status_code == 200
