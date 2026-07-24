@@ -57,6 +57,7 @@ export function ProviderSettingsForm({
     AccountResponse["fieldErrors"]
   >({});
   const [saved, setSaved] = useState(false);
+  const hasChanges = Object.values(form).some((value) => value.trim());
 
   function updateField(name: keyof ProviderFormState, value: string) {
     setForm((current) => ({ ...current, [name]: value }));
@@ -66,6 +67,7 @@ export function ProviderSettingsForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!hasChanges) return;
     setBusy(true);
     setError("");
     setSaved(false);
@@ -152,7 +154,7 @@ export function ProviderSettingsForm({
           <TextField
             label="App name"
             name="modalAppName"
-            placeholder="forge-mvp"
+            placeholder="Leave blank to keep current (default: forge-mvp)"
             value={form.modalAppName}
             error={fieldErrors?.modalAppName?.[0]}
             onChange={updateField}
@@ -160,7 +162,7 @@ export function ProviderSettingsForm({
           <TextField
             label="Environment"
             name="modalEnvironment"
-            placeholder="main"
+            placeholder="Leave blank to keep current (default: main)"
             value={form.modalEnvironment}
             error={fieldErrors?.modalEnvironment?.[0]}
             onChange={updateField}
@@ -190,7 +192,7 @@ export function ProviderSettingsForm({
           <TextField
             label="Default model ID"
             name="basetenModelId"
-            placeholder="zai-org/GLM-5.2-Fast"
+            placeholder="Leave blank to keep current model"
             value={form.basetenModelId}
             error={fieldErrors?.basetenModelId?.[0]}
             onChange={updateField}
@@ -222,7 +224,7 @@ export function ProviderSettingsForm({
         <button
           className={styles.saveButton}
           type="submit"
-          disabled={busy || !account.available}
+          disabled={busy || !account.available || !hasChanges}
         >
           {busy ? <LoaderCircle className={styles.spin} size={16} /> : null}
           {busy ? "Saving…" : "Save settings"}
@@ -246,9 +248,52 @@ export function ProviderOnboardingDialog({
   );
   const [account, setAccount] = useState(initialAccount);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const modalRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (phase === "open") headingRef.current?.focus();
+    if (phase !== "open") return;
+
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    headingRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setPhase("closed");
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        modalRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      ).filter((element) => !element.hasAttribute("hidden"));
+      if (!focusable.length) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !modalRef.current?.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
   }, [phase]);
 
   if (phase === "closed") return null;
@@ -256,6 +301,7 @@ export function ProviderOnboardingDialog({
   return (
     <div className={styles.modalBackdrop}>
       <section
+        ref={modalRef}
         className={styles.modal}
         role="dialog"
         aria-modal="true"

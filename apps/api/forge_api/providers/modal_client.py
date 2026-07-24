@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from forge_api.models.domain import Checkpoint, Deployment
@@ -108,13 +110,23 @@ def delete_checkpoint_artifact(settings: Settings, *, artifact_uri: str) -> dict
         return function.remote(run_id=run_id)
 
 
-def _modal_client(modal: Any, settings: Settings) -> Any:
+@contextmanager
+def _modal_client(modal: Any, settings: Settings) -> Iterator[Any]:
     if not settings.modal_token_id or not settings.modal_token_secret:
         raise RuntimeError("Modal credentials are not configured")
-    return modal.Client.from_credentials(
+    # Modal opens clients returned by from_credentials immediately. Entering that
+    # client as a context manager tries to open it a second time and raises an
+    # AssertionError in current SDKs, so yield it directly and invoke the context
+    # protocol's close path after the request-scoped operation completes.
+    client = modal.Client.from_credentials(
         settings.modal_token_id,
         settings.modal_token_secret,
     )
+    try:
+        yield client
+    finally:
+        if not client.is_closed():
+            client.__exit__(None, None, None)
 
 
 def _run_id_from_artifact_uri(artifact_uri: str) -> str | None:

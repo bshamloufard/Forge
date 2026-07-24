@@ -441,6 +441,48 @@ label {
   font-weight: 500;
 }
 
+.utility-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compact-runtime-link {
+  min-height: 36px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.compact-runtime-link:hover {
+  border-color: #3c3c3c;
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.compact-runtime-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compact-runtime-dots .runtime-dot {
+  width: 6px;
+  height: 6px;
+}
+
 .product-scroll {
   min-height: 0;
   overflow: auto;
@@ -1573,6 +1615,10 @@ label {
     grid-template-rows: 52px minmax(0, 1fr);
   }
 
+  .compact-runtime-link {
+    display: inline-flex;
+  }
+
   .new-run-frame {
     grid-template-columns: 1fr;
   }
@@ -1690,6 +1736,10 @@ label {
 
   .compact-action {
     padding: 0 10px;
+  }
+
+  .compact-runtime-link > span:nth-child(2) {
+    display: none;
   }
 
   .product-scroll {

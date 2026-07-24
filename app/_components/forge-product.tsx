@@ -283,10 +283,36 @@ function ShellChrome({
             <ChevronRight size={14} />
             <strong>{pageLabels[pathname] ?? "Train"}</strong>
           </div>
-          <Link className="button primary compact-action" href="/runs#new-run">
-            <Play size={15} fill="currentColor" />
-            New run
-          </Link>
+          <div className="utility-actions">
+            <Link
+              className="compact-runtime-link"
+              href="/account"
+              aria-label={[
+                `Training: ${account.providers.modal ? "configured" : "not ready"}`,
+                `Serving: ${account.providers.baseten ? "configured" : "not ready"}`,
+                `Storage: ${account.providers.storage ? "configured" : "not ready"}`,
+                "Open account settings"
+              ].join(". ")}
+            >
+              <span className="compact-runtime-dots" aria-hidden="true">
+                <span
+                  className={`runtime-dot ${account.providers.modal ? "ready" : ""}`}
+                />
+                <span
+                  className={`runtime-dot ${account.providers.baseten ? "ready" : ""}`}
+                />
+                <span
+                  className={`runtime-dot ${account.providers.storage ? "ready" : ""}`}
+                />
+              </span>
+              <span>Account</span>
+              <UserRound size={15} />
+            </Link>
+            <Link className="button primary compact-action" href="/runs#new-run">
+              <Play size={15} fill="currentColor" />
+              New run
+            </Link>
+          </div>
         </header>
 
         <main className="product-scroll">
