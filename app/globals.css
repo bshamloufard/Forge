@@ -599,6 +599,12 @@ code {
   background: linear-gradient(180deg, #2f80ed, #9ed3ff);
 }
 
+.chart-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+}
+
 .chart-legend {
   margin-top: 10px;
   color: var(--muted);

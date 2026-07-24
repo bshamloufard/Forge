@@ -109,8 +109,6 @@ const pipeline = [
   ["Serve", Cloud]
 ] as const;
 
-const activityBars = [42, 48, 37, 63, 58, 72, 67, 81, 76, 88, 79, 92, 84, 74, 86, 69];
-
 const ForgeContext = createContext<ForgeContextValue | null>(null);
 
 export function ForgeShell({ children }: { children: React.ReactNode }) {
@@ -385,7 +383,7 @@ export function OverviewPage() {
 
       <section className="dashboard-grid">
         <Panel icon={LineChart} title="Activity" eyebrow="24h control plane">
-          <ActivityChart />
+          <ActivityChart runs={state.runs} />
         </Panel>
         <Panel icon={Activity} title="Recent runs" eyebrow="Training pipeline">
           <RunTable runs={state.runs.slice(0, 4)} sessions={state.sessions} compact />
@@ -770,18 +768,28 @@ function MiniKpi({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function ActivityChart() {
+function ActivityChart({ runs }: { runs: TrainingRun[] }) {
+  if (runs.length === 0) {
+    return <div className="empty chart-empty">No run activity yet.</div>;
+  }
+
+  const recentRuns = runs.slice(0, 16).reverse();
+  const maxTokens = Math.max(1, ...recentRuns.map((run) => run.tokens));
+
   return (
     <>
-      <div className="bar-chart" aria-label="Synthetic activity chart">
-        {activityBars.map((height, index) => (
-          <i style={{ height: `${height}%` }} key={`${height}-${index}`} />
+      <div className="bar-chart" aria-label="Run activity chart">
+        {recentRuns.map((run) => (
+          <i
+            style={{ height: `${Math.max(4, Math.round((run.tokens / maxTokens) * 100))}%` }}
+            key={run.id}
+            title={`${run.name}: ${run.tokens.toLocaleString()} tokens`}
+          />
         ))}
       </div>
       <div className="chart-legend">
-        <span>rollouts</span>
-        <span>verifier calls</span>
-        <span>checkpoints</span>
+        <span>tokens by run</span>
+        <span>{recentRuns.length} run{recentRuns.length === 1 ? "" : "s"}</span>
       </div>
     </>
   );
