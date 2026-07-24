@@ -1,10 +1,11 @@
 # Authentication and Provider Onboarding
 
-Status: implemented in the current working tree. The four feature migrations
-listed below are applied to the hosted Supabase project, and the founder account
-for `bshamloufard@berkeley.edu` is bootstrapped with the existing provider
-configuration. Application deployment and Google OAuth configuration must still
-be verified with the production checklist in this document.
+Status: implemented and deployed. The four feature migrations listed below are
+applied to the hosted Supabase project, and the founder account for
+`bshamloufard@berkeley.edu` is bootstrapped with the existing provider
+configuration. The Google Cloud OAuth client is the only remaining external
+configuration gate; Forge keeps the Google actions disabled until Supabase
+reports that the provider is enabled.
 
 This runbook is the source of truth for Google sign-in, account creation,
 replace-only provider credentials, per-user state, and the one-time onboarding
@@ -55,6 +56,11 @@ The deployed services and canonical URLs are:
 `app.forge-web-ykmh.onrender.com` is not a valid subdomain owned by this
 project. Use the exact Render hostname above or add an owned custom domain such
 as `app.example.com` in Render and update every OAuth URL together.
+
+The production web service currently runs commit
+`1132e3b8a8bd787ffb10ec9d3093850b8892ef03`. The secure API revision and database
+migrations are live. Render auto-deploy tracks `main`, so merge pull request #9
+before a later `main` deployment to make this release durable.
 
 ### Request Trust Boundary
 
@@ -336,10 +342,10 @@ networking, so the internal-key check is required even though traffic is
 server-to-server.
 
 The Blueprint no longer provisions process-level `MODAL_TOKEN_ID`,
-`MODAL_TOKEN_SECRET`, or `BASETEN_API_KEY`. Remove any legacy copies that remain
-on the existing production API service after the founder's Vault-backed smoke
-test. Authenticated requests already fail closed instead of using these values,
-but removal makes Vault the single production source and reduces blast radius.
+`MODAL_TOKEN_SECRET`, or `BASETEN_API_KEY`, and the legacy production copies have
+been removed after the founder's Vault-backed smoke test. Authenticated requests
+fail closed instead of using process-level founder credentials, making Vault the
+single production source.
 
 ## Deployment Runbook
 
