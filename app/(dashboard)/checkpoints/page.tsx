@@ -1,5 +1,5 @@
-import { CheckpointsPage } from "@/app/_components/forge-app";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <CheckpointsPage />;
+  redirect("/deployments");
 }

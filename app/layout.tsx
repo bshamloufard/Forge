@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import "./product-ui.css";
 
 export const metadata: Metadata = {
-  title: "Forge Tinkering MVP",
-  description: "A Tinker-class post-training control plane MVP"
+  title: "Forge — Post-training workspace",
+  description: "Train, evaluate, and deploy post-trained models from one control plane."
 };
 
 export default function RootLayout({

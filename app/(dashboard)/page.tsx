@@ -1,5 +1,5 @@
-import { OverviewPage } from "@/app/_components/forge-app";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <OverviewPage />;
+  redirect("/runs");
 }

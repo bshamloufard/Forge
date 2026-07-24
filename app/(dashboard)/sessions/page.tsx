@@ -1,5 +1,5 @@
-import { SessionsPage } from "@/app/_components/forge-app";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <SessionsPage />;
+  redirect("/runs#new-run");
 }

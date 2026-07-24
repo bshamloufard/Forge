@@ -1,5 +1,5 @@
-import { RunsPage } from "@/app/_components/forge-app";
+import { TrainPage } from "@/app/_components/forge-product";
 
 export default function Page() {
-  return <RunsPage />;
+  return <TrainPage />;
 }
