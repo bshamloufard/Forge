@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getAppOrigin,
+  isGoogleProviderEnabled,
   sanitizeNextPath
 } from "@/lib/auth";
 import { hasSupabasePublicConfig } from "@/lib/supabase/config";
@@ -23,6 +24,13 @@ export async function POST(request: Request) {
   if (!hasSupabasePublicConfig()) {
     return NextResponse.redirect(
       new URL("/auth/error?reason=config", origin),
+      303
+    );
+  }
+
+  if (!(await isGoogleProviderEnabled())) {
+    return NextResponse.redirect(
+      new URL("/auth/error?reason=provider_disabled", origin),
       303
     );
   }

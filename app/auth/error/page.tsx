@@ -4,6 +4,8 @@ import styles from "@/app/home.module.css";
 const messages: Record<string, string> = {
   config:
     "Google sign-in is not configured yet. Add the Supabase public URL and publishable key, then try again.",
+  provider_disabled:
+    "Google sign-in is not enabled yet. Finish the Google provider setup in Supabase, then try again.",
   oauth_start:
     "Forge could not start Google sign-in. Check the Google provider and allowed redirect URLs in Supabase.",
   missing_code:

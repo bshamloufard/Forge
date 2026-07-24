@@ -9,7 +9,11 @@ import {
   Workflow
 } from "lucide-react";
 import { redirect } from "next/navigation";
-import { getCurrentUser, sanitizeNextPath } from "@/lib/auth";
+import {
+  getCurrentUser,
+  isGoogleProviderEnabled,
+  sanitizeNextPath
+} from "@/lib/auth";
 import { hasSupabasePublicConfig } from "@/lib/supabase/config";
 import styles from "./home.module.css";
 
@@ -28,6 +32,9 @@ export default async function HomePage({
 }) {
   const query = await searchParams;
   const authConfigured = hasSupabasePublicConfig();
+  const googleEnabled = authConfigured
+    ? await isGoogleProviderEnabled()
+    : false;
   const user = authConfigured ? await getCurrentUser() : null;
   if (user) redirect(sanitizeNextPath(query.next));
 
@@ -45,7 +52,7 @@ export default async function HomePage({
           <button
             className={styles.navAction}
             type="submit"
-            disabled={!authConfigured}
+            disabled={!googleEnabled}
           >
             Sign in
             <ArrowRight size={15} />
@@ -68,7 +75,7 @@ export default async function HomePage({
             <button
               className={styles.googleButton}
               type="submit"
-              disabled={!authConfigured}
+              disabled={!googleEnabled}
             >
               <GoogleMark />
               Continue with Google
@@ -83,6 +90,10 @@ export default async function HomePage({
             <p className={styles.notice} role="status">
               Authentication setup is incomplete. Configure Supabase to enable
               sign-in.
+            </p>
+          ) : !googleEnabled ? (
+            <p className={styles.notice} role="status">
+              Google sign-in is being connected. Please check back shortly.
             </p>
           ) : query.auth_error ? (
             <p className={styles.notice} role="alert">

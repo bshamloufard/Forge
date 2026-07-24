@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { createBearerClient, createClient } from "@/lib/supabase/server";
+import { getSupabasePublicConfig } from "@/lib/supabase/config";
 
 export type AuthenticatedRequest = {
   supabase: SupabaseClient;
@@ -17,6 +18,25 @@ export async function getCurrentUser() {
     error
   } = await supabase.auth.getUser();
   return error ? null : user;
+}
+
+export async function isGoogleProviderEnabled() {
+  const { url, publishableKey } = getSupabasePublicConfig();
+  try {
+    const response = await fetch(`${url.replace(/\/$/, "")}/auth/v1/settings`, {
+      headers: {
+        apikey: publishableKey
+      },
+      cache: "no-store"
+    });
+    if (!response.ok) return false;
+    const settings = (await response.json()) as {
+      external?: { google?: boolean };
+    };
+    return settings.external?.google === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function requireUser() {
