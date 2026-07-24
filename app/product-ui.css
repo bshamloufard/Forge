@@ -181,7 +181,16 @@ label {
   padding: 0 4px;
 }
 
-.brand-symbol,
+.brand-symbol {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  transition: opacity 140ms ease;
+}
+
 .loading-mark {
   width: 32px;
   height: 32px;
@@ -203,17 +212,8 @@ label {
   height: 22px;
 }
 
-.brand-symbol {
-  transition:
-    border-color 140ms ease,
-    background 140ms ease,
-    color 140ms ease;
-}
-
 .brand-symbol:hover {
-  border-color: #52677b;
-  background: var(--surface-hover);
-  color: var(--accent-strong);
+  opacity: 0.72;
 }
 
 .brand-copy {

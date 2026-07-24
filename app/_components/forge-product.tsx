@@ -196,8 +196,7 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
             <AnvilLogo />
           </Link>
           <div className="brand-copy">
-            <strong>Forge</strong>
-            <span>{project?.organization ?? "Post-training"}</span>
+            <strong>Ben Shamloufard</strong>
           </div>
         </div>
 
