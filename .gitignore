@@ -22,6 +22,9 @@ pnpm-debug.log*
 # Python runtime caches
 __pycache__/
 
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
 # OS/editor noise
 .DS_Store
 .idea/
