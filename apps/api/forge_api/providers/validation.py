@@ -285,4 +285,3 @@ def _modal_result_from_output(output: str) -> dict[str, object] | None:
             return None
         return payload if isinstance(payload, dict) else None
     return None
-
