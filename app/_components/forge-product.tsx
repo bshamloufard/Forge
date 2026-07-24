@@ -360,21 +360,31 @@ export function TrainPage() {
                   label="Status"
                   value={humanize(activeRun.status)}
                   icon={Activity}
+                  tone={
+                    activeRun.status === "completed"
+                      ? "success"
+                      : activeRun.status === "failed"
+                        ? "danger"
+                        : "info"
+                  }
                 />
                 <MetricCell
                   label="Loss"
                   value={activeRun.loss}
                   icon={GitBranch}
+                  tone="danger"
                 />
                 <MetricCell
                   label="Reward"
                   value={activeRun.reward}
                   icon={Zap}
+                  tone="warning"
                 />
                 <MetricCell
                   label="Verifier"
                   value={activeRun.verifierScore}
                   icon={ShieldCheck}
+                  tone="purple"
                 />
               </div>
 
@@ -458,6 +468,13 @@ export function TrainPage() {
 export function EvaluatePage() {
   const forge = useReadyForge();
   const latestScore = forge.state.verifierScores[0];
+  const latestScoreTone = latestScore
+    ? latestScore.score >= 0.7
+      ? "success"
+      : latestScore.score >= 0.4
+        ? "warning"
+        : "danger"
+    : "";
 
   async function evaluateCandidate() {
     try {
@@ -529,7 +546,7 @@ export function EvaluatePage() {
         </div>
 
         <aside className="evaluation-results">
-          <div className="score-hero">
+          <div className={`score-hero ${latestScoreTone}`}>
             <span>Latest score</span>
             <strong>{latestScore ? latestScore.score.toFixed(2) : "—"}</strong>
             <p>
@@ -650,16 +667,19 @@ export function DeployPage() {
           label="Saved versions"
           value={forge.state.checkpoints.length}
           icon={Archive}
+          tone="info"
         />
         <MetricCell
           label="Live endpoints"
           value={liveDeployments}
           icon={Cloud}
+          tone="success"
         />
         <MetricCell
           label="Best score"
           value={bestScore.toFixed(2)}
           icon={ShieldCheck}
+          tone="purple"
         />
         <MetricCell
           label="Serving runtime"
@@ -669,6 +689,11 @@ export function DeployPage() {
               : "Setup needed"
           }
           icon={Server}
+          tone={
+            forge.state.providers.baseten === "configured"
+              ? "success"
+              : "warning"
+          }
         />
       </div>
 
@@ -1245,7 +1270,17 @@ function ScoreHistory({ scores }: { scores: VerifierScore[] }) {
     <div className="score-list">
       {scores.slice(0, 8).map((score) => (
         <div className="score-list-row" key={score.id}>
-          <strong>{score.score.toFixed(2)}</strong>
+          <strong
+            className={
+              score.score >= 0.7
+                ? "score-success"
+                : score.score >= 0.4
+                  ? "score-warning"
+                  : "score-danger"
+            }
+          >
+            {score.score.toFixed(2)}
+          </strong>
           <div>
             <p>{score.candidate}</p>
             <span>{formatDate(score.createdAt)}</span>
@@ -1306,14 +1341,16 @@ function FrameHeader({
 function MetricCell({
   label,
   value,
-  icon: Icon
+  icon: Icon,
+  tone
 }: {
   label: string;
   value: string | number;
   icon: IconComponent;
+  tone?: "success" | "danger" | "warning" | "info" | "purple";
 }) {
   return (
-    <div className="metric-cell">
+    <div className={`metric-cell ${tone ? `metric-${tone}` : ""}`}>
       <div>
         <span>{label}</span>
         <Icon size={15} />
@@ -1332,9 +1369,13 @@ function StatusTag({ status }: { status: string }) {
       ? "success"
       : normalized === "failed"
         ? "danger"
-        : normalized === "running" || normalized === "deploying"
-          ? "progressing"
-          : "neutral";
+        : normalized === "queued" ||
+            normalized === "draft" ||
+            normalized === "stopping"
+          ? "warning"
+          : normalized === "running" || normalized === "deploying"
+            ? "progressing"
+            : "neutral";
   const Icon =
     tone === "success"
       ? CheckCircle2
@@ -1355,7 +1396,7 @@ function StatusTag({ status }: { status: string }) {
 function Progress({ value }: { value: number }) {
   return (
     <div
-      className="progress-track"
+      className={`progress-track ${value >= 100 ? "complete" : ""}`}
       role="progressbar"
       aria-label="Run progress"
       aria-valuemin={0}
