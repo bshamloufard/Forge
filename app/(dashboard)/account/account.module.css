@@ -1,0 +1,445 @@
+.page {
+  width: min(100%, 1120px);
+  display: grid;
+  gap: 20px;
+  margin: 0 auto;
+}
+
+.intro {
+  min-height: 112px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 8px;
+}
+
+.intro > div {
+  max-width: 680px;
+}
+
+.intro > div > span,
+.formHeader span,
+.modalIntro > span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.intro h1 {
+  margin-top: 5px;
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 560;
+  letter-spacing: -0.035em;
+}
+
+.intro p,
+.formHeader p,
+.modalIntro p {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.signOut {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.warning,
+.formError,
+.formSuccess {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--warning-border);
+  border-radius: 6px;
+  background: var(--warning-surface);
+  color: var(--warning);
+  padding: 11px 13px;
+  font-size: 12px;
+}
+
+.warning > div {
+  display: grid;
+  gap: 2px;
+}
+
+.warning strong {
+  font-weight: 560;
+}
+
+.warning p {
+  color: var(--text-secondary);
+}
+
+.identityCard {
+  min-height: 86px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.avatar,
+.avatarFallback {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 50%;
+}
+
+.avatar {
+  object-fit: cover;
+}
+
+.avatarFallback {
+  display: grid;
+  place-items: center;
+  border: 1px solid #3b4b5b;
+  background: var(--selected);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.identityCard > div {
+  display: grid;
+  gap: 1px;
+}
+
+.identityCard span {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.identityCard strong {
+  font-size: 14px;
+  font-weight: 560;
+}
+
+.identityCard p {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.statusCard {
+  display: grid;
+  gap: 9px;
+  border-right: 1px solid var(--line);
+  padding: 16px;
+}
+
+.statusCard:last-child {
+  border-right: 0;
+}
+
+.statusCard > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.statusCard strong {
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.statusCard p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warning);
+  font-size: 11px;
+}
+
+.statusCard[data-tone="ready"] p {
+  color: var(--success);
+}
+
+.providerForm {
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.compactForm {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.formHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+  padding: 20px;
+}
+
+.formHeader h2,
+.modalIntro h2 {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+}
+
+.formHeader svg {
+  color: var(--success);
+}
+
+.providerSection {
+  display: grid;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 20px;
+}
+
+.compactForm .providerSection {
+  padding: 18px 0;
+}
+
+.providerHeading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.providerHeading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.providerHeading strong {
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.providerHeading > div > span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.providerHeading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--warning);
+  font-size: 10px;
+}
+
+.providerHeading > span[data-ready="true"] {
+  color: var(--success);
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.field {
+  align-content: start;
+}
+
+.field input {
+  min-height: 40px;
+}
+
+.fieldError {
+  color: var(--danger);
+  font-size: 10px;
+}
+
+.fixedEndpoint {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.formError,
+.formSuccess {
+  margin: 14px 20px 0;
+}
+
+.compactForm .formError,
+.compactForm .formSuccess {
+  margin: 14px 0 0;
+}
+
+.formError {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.formSuccess {
+  border-color: var(--success-border);
+  background: var(--success-surface);
+  color: var(--success);
+}
+
+.formFooter {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 20px;
+}
+
+.compactForm .formFooter {
+  padding: 16px 0 0;
+}
+
+.formFooter p {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.saveButton {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #90b6da;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #111820;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.spin {
+  animation: spin 850ms linear infinite;
+}
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  background: rgba(5, 5, 5, 0.76);
+  padding: 24px;
+  backdrop-filter: blur(5px);
+}
+
+.modal {
+  position: relative;
+  width: min(100%, 680px);
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  border: 1px solid #343434;
+  border-radius: 9px;
+  background: #191919;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+  padding: 26px;
+}
+
+.modalClose {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.modalIntro {
+  max-width: 560px;
+  padding-right: 42px;
+}
+
+.modalIntro p {
+  line-height: 1.55;
+}
+
+.skipButton {
+  display: block;
+  margin: 14px auto 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  font-size: 11px;
+}
+
+.skipButton:hover {
+  color: var(--text-secondary);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .intro {
+    align-items: start;
+  }
+
+  .statusGrid,
+  .fieldGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statusCard {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .statusCard:last-child {
+    border-bottom: 0;
+  }
+
+  .formFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .saveButton {
+    width: 100%;
+  }
+}

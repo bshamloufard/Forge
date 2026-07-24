@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 
 from forge_api.dependencies import get_repository
 from forge_api.models.requests import ForwardBackwardRequest
+from forge_api.providers.health import get_provider_health
 from forge_api.services.store import StateRepository
 
 router = APIRouter(tags=["runs"])
@@ -19,6 +20,15 @@ def forward_backward(
     body: ForwardBackwardRequest = ForwardBackwardRequest(),
     repository: StateRepository = Depends(get_repository),
 ) -> dict[str, object]:
+    if (
+        repository.identity.authenticated
+        and get_provider_health(repository.settings).modal != "configured"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Configure Modal credentials in Account before training.",
+        )
+
     try:
         target_run_id = run_id or body.runId
         if target_run_id is None:
@@ -37,6 +47,15 @@ def optim_step(
     body: dict[str, str] = Body(default_factory=dict),
     repository: StateRepository = Depends(get_repository),
 ) -> dict[str, object]:
+    if (
+        repository.identity.authenticated
+        and get_provider_health(repository.settings).modal != "configured"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Configure Modal credentials in Account before training.",
+        )
+
     try:
         target_run_id = run_id or body.get("runId")
         if target_run_id is None:

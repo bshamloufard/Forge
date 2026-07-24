@@ -23,7 +23,7 @@ async function request(path, options = {}) {
   );
 }
 
-const state = await request("/api/state");
+await request("/api/state");
 const created = await request("/api/v1/sessions", {
   method: "POST",
   body: JSON.stringify({

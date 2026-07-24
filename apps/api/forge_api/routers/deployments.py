@@ -20,6 +20,24 @@ def create_deployment(
     body: CreateDeploymentRequest,
     repository: StateRepository = Depends(get_repository),
 ) -> dict[str, object]:
+    if repository.identity.authenticated:
+        health = get_provider_health(repository.settings)
+        if body.target == "baseten" and (
+            health.baseten != "configured" or health.modal != "configured"
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Configure both Modal and Baseten credentials in Account "
+                    "before deploying."
+                ),
+            )
+        if body.target == "modal" and health.modal != "configured":
+            raise HTTPException(
+                status_code=409,
+                detail="Configure Modal credentials in Account before deploying.",
+            )
+
     try:
         return _dump(repository.deploy_checkpoint(body.checkpointId, body.target))
     except KeyError as exc:
@@ -40,6 +58,18 @@ def invoke_deployment(
         raise HTTPException(status_code=404, detail="Deployment not found")
     if deployment.status == "stopped":
         raise HTTPException(status_code=409, detail="Deployment is stopped")
+    if (
+        repository.identity.authenticated
+        and getattr(get_provider_health(repository.settings), deployment.target)
+        != "configured"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Configure {deployment.target.title()} credentials in Account "
+                "before invoking this deployment."
+            ),
+        )
     prompt = body.prompt
     if prompt is None and body.messages:
         prompt = "\n".join(f"{message.role}: {message.content}" for message in body.messages)

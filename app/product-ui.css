@@ -315,8 +315,20 @@ label {
   grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+  min-height: 28px;
+  margin: 0 -6px;
+  border-radius: 5px;
+  padding: 0 6px;
   color: var(--text-secondary);
   font-size: 12px;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.runtime-row:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .runtime-row small {
@@ -335,6 +347,59 @@ label {
 .runtime-dot.ready {
   border-color: var(--success);
   background: var(--success);
+}
+
+.account-link {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin: 6px -4px -2px;
+  border-top: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 12px 4px 4px;
+  color: var(--text-secondary);
+}
+
+.account-link:hover {
+  color: var(--text);
+}
+
+.account-link > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.account-link strong,
+.account-link small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-link strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.account-link small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.account-avatar {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--selected);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .product-area {
@@ -374,6 +439,48 @@ label {
 .utility-context strong {
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.utility-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compact-runtime-link {
+  min-height: 36px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.compact-runtime-link:hover {
+  border-color: #3c3c3c;
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.compact-runtime-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compact-runtime-dots .runtime-dot {
+  width: 6px;
+  height: 6px;
 }
 
 .product-scroll {
@@ -1508,6 +1615,10 @@ label {
     grid-template-rows: 52px minmax(0, 1fr);
   }
 
+  .compact-runtime-link {
+    display: inline-flex;
+  }
+
   .new-run-frame {
     grid-template-columns: 1fr;
   }
@@ -1625,6 +1736,10 @@ label {
 
   .compact-action {
     padding: 0 10px;
+  }
+
+  .compact-runtime-link > span:nth-child(2) {
+    display: none;
   }
 
   .product-scroll {

@@ -8,11 +8,14 @@
     "api:test": "cd apps/api && python -m pytest tests -q",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
-    "lint": "next lint",
+    "lint": "eslint .",
     "smoke": "node scripts/smoke.mjs",
-    "smoke:python": "python scripts/python_smoke.py"
+    "smoke:python": "python scripts/python_smoke.py",
+    "bootstrap:founder": "node scripts/bootstrap-founder.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "0.12.3",
+    "@supabase/supabase-js": "2.110.8",
     "lucide-react": "^0.468.0",
     "next": "^16.2.9",
     "react": "^19.0.0",
