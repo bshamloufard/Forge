@@ -165,7 +165,8 @@ export function ProviderSettingsForm({
             <p>
               Leave a secret blank to keep its current value. Forge never reads
               an existing secret back into your browser. Replacements are
-              verified before the saved value changes.
+              verified before the saved value changes; Modal token ID and
+              secret are replaced together.
             </p>
           </div>
           <ShieldCheck size={20} />

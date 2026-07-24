@@ -91,9 +91,11 @@ export default async function AccountPage() {
           status={
             account.providers.modal && account.providers.baseten
               ? "Ready"
-              : account.providers.basetenCredentialsStored
-                ? "Waiting on provider setup"
-                : "Not configured"
+              : !account.providers.baseten
+                ? account.providers.basetenCredentialsStored
+                  ? "Baseten needs attention"
+                  : "Not configured"
+                : "Waiting on Modal"
           }
         />
         <ReadinessCard
