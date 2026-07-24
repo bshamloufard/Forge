@@ -44,27 +44,6 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
-}
-
-.brandMark {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(171, 201, 226, 0.25);
-  border-radius: 11px;
-  background: rgba(10, 17, 24, 0.62);
-  color: #a8c6df;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 16px 42px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(14px);
-}
-
-.brandMark svg {
-  width: 24px;
-  height: 24px;
 }
 
 .brand h1 {

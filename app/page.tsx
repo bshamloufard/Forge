@@ -7,7 +7,6 @@ import {
 } from "@/lib/auth";
 import { hasSupabasePublicConfig } from "@/lib/supabase/config";
 import { AnimatedGradientBackground } from "./_components/animated-gradient-background";
-import { AnvilLogo } from "./_components/anvil-logo";
 import styles from "./home.module.css";
 
 export const dynamic = "force-dynamic";
@@ -57,9 +56,6 @@ export default async function HomePage({
 
       <section className={styles.signIn} aria-labelledby="forge-title">
         <div className={styles.brand}>
-          <span className={styles.brandMark} aria-hidden="true">
-            <AnvilLogo />
-          </span>
           <h1 id="forge-title">Forge</h1>
         </div>
 
