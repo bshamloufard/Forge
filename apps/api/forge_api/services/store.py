@@ -5,7 +5,8 @@ from pathlib import Path
 from forge_api.ids import create_id
 from forge_api.models.domain import Checkpoint, Deployment, ForgeState, Project, Session, TrainingRun, VerifierScore
 from forge_api.providers.health import create_serving_endpoint
-from forge_api.providers.modal_client import run_tiny_finetune
+from forge_api.providers.health import get_provider_health
+from forge_api.providers.modal_client import deploy_checkpoint_to_baseten, run_tiny_finetune
 from forge_api.recipes import recipes
 from forge_api.services.verifier import score_candidate
 from forge_api.settings import Settings
@@ -225,14 +226,30 @@ class StateRepository:
         checkpoint = next((item for item in state.checkpoints if item.id == checkpoint_id), None)
         if checkpoint is None:
             raise KeyError("Checkpoint not found")
+        health = get_provider_health(self.settings)
+        provider_result: dict[str, object] = {}
+        if (
+            target == "baseten"
+            and health.baseten == "configured"
+            and health.modal == "configured"
+            and checkpoint.artifactUri.startswith("modal-volume://forge-checkpoints/")
+        ):
+            provider_result = deploy_checkpoint_to_baseten(self.settings, checkpoint=checkpoint)
+
         endpoint = create_serving_endpoint(checkpoint.name, target, self.settings)
+        endpoint_url = str(provider_result.get("predict_url") or endpoint["endpointUrl"])
         deployment = Deployment(
             id=create_id("dep"),
             checkpointId=checkpoint_id,
             target=target,  # type: ignore[arg-type]
             status="live",
-            endpointUrl=endpoint["endpointUrl"],
+            endpointUrl=endpoint_url,
             mode=endpoint["mode"],  # type: ignore[arg-type]
+            artifactUri=checkpoint.artifactUri,
+            providerModelId=_string_or_none(provider_result.get("model_id")),
+            providerDeploymentId=_string_or_none(provider_result.get("deployment_id")),
+            providerDeploymentName=_string_or_none(provider_result.get("deployment_name")),
+            logsUrl=_string_or_none(provider_result.get("logs_url")),
             createdAt=now(),
         )
         state.deployments.insert(0, deployment)
@@ -256,6 +273,10 @@ def _find_session(state: ForgeState, session_id: str) -> Session:
     if session is None:
         raise KeyError("Session not found")
     return session
+
+
+def _string_or_none(value: object) -> str | None:
+    return str(value) if value else None
 
 
 def _latest_artifact_uri(run: TrainingRun) -> str | None:

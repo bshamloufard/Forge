@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from forge_api.models.domain import Checkpoint
 from forge_api.settings import Settings
 
 
@@ -20,3 +21,30 @@ def run_tiny_finetune(settings: Settings, *, run_id: str) -> dict[str, Any]:
         dataset_split=settings.training_dataset_split,
         max_steps=settings.training_max_steps,
     )
+
+
+def deploy_checkpoint_to_baseten(settings: Settings, *, checkpoint: Checkpoint) -> dict[str, Any]:
+    if not settings.baseten_api_key:
+        raise RuntimeError("BASETEN_API_KEY is not configured")
+
+    run_id = _run_id_from_artifact_uri(checkpoint.artifactUri) or checkpoint.runId
+    import modal
+
+    function = modal.Function.from_name(
+        settings.modal_app_name,
+        "deploy_checkpoint_to_baseten",
+        environment_name=settings.modal_environment,
+    )
+    return function.remote(
+        run_id=run_id,
+        checkpoint_id=checkpoint.id,
+        checkpoint_name=checkpoint.name,
+        baseten_api_key=settings.baseten_api_key,
+    )
+
+
+def _run_id_from_artifact_uri(artifact_uri: str) -> str | None:
+    prefix = "modal-volume://forge-checkpoints/"
+    if artifact_uri.startswith(prefix):
+        return artifact_uri.removeprefix(prefix).strip("/") or None
+    return None

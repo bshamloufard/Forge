@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from forge_api.dependencies import get_repository
 from forge_api.models.requests import CreateDeploymentRequest, DeploymentInvokeRequest
-from forge_api.providers.baseten_client import chat_completion
+from forge_api.providers.baseten_client import chat_completion, predict_deployment
 from forge_api.providers.health import get_provider_health
 from forge_api.services.store import StateRepository
 
@@ -24,6 +24,8 @@ def create_deployment(
         return _dump(repository.deploy_checkpoint(body.checkpointId, body.target))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Deployment failed: {exc}") from exc
 
 
 @router.post("/v1/deployments/{deployment_id}/invoke")
@@ -42,6 +44,8 @@ def invoke_deployment(
     prompt = prompt or "Hello"
     if deployment.target == "baseten" and get_provider_health(repository.settings).baseten == "configured":
         try:
+            if deployment.providerModelId and deployment.endpointUrl:
+                return predict_deployment(repository.settings, deployment=deployment, prompt=prompt, messages=body.messages)
             return chat_completion(repository.settings, prompt=prompt, messages=body.messages)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Baseten invoke failed: {exc}") from exc

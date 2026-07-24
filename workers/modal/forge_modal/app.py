@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+import textwrap
+import uuid
 import json
 import time
 from pathlib import Path
@@ -13,6 +18,11 @@ CHECKPOINT_ROOT = Path("/checkpoints")
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
+    .apt_install("ca-certificates", "curl")
+    .run_commands(
+        "curl -sL https://github.com/basetenlabs/baseten-cli/releases/download/v0.3.0/baseten_0.3.0_linux_amd64.tar.gz "
+        "| tar xz -C /usr/local/bin baseten"
+    )
     .pip_install(
         "datasets>=3.0",
         "torch>=2.5",
@@ -104,6 +114,80 @@ def run_tiny_finetune(
     return metadata
 
 
+@app.function(
+    image=image,
+    volumes={str(CHECKPOINT_ROOT): checkpoints},
+    timeout=45 * 60,
+    cpu=2,
+    memory=4096,
+)
+def deploy_checkpoint_to_baseten(
+    run_id: str,
+    checkpoint_id: str,
+    checkpoint_name: str,
+    baseten_api_key: str,
+) -> dict[str, Any]:
+    if not baseten_api_key.strip():
+        raise ValueError("BASETEN_API_KEY is required")
+
+    artifact_dir = CHECKPOINT_ROOT / run_id
+    if not artifact_dir.exists():
+        raise FileNotFoundError(f"Checkpoint artifact not found in Modal volume: {artifact_dir}")
+
+    model_name = _baseten_safe_name(f"forge-{checkpoint_name}-{checkpoint_id}")
+    deployment_name = _baseten_safe_name(f"{model_name}-{uuid.uuid4().hex[:8]}")
+    truss_dir = Path("/tmp") / f"forge-truss-{checkpoint_id}"
+    if truss_dir.exists():
+        shutil.rmtree(truss_dir)
+    (truss_dir / "model").mkdir(parents=True)
+    shutil.copytree(artifact_dir, truss_dir / "model_artifacts")
+
+    (truss_dir / "config.yaml").write_text(_truss_config(model_name))
+    (truss_dir / "model" / "model.py").write_text(_truss_model_py(model_name))
+
+    env = os.environ.copy()
+    env["BASETEN_API_KEY"] = baseten_api_key
+    result = subprocess.run(
+        [
+            "baseten",
+            "model",
+            "push",
+            "--dir",
+            str(truss_dir),
+            "--output",
+            "json",
+            "--wait",
+            "--deploy-timeout",
+            "30m",
+            "--deployment-name",
+            deployment_name,
+            "--labels",
+            json.dumps({"source": "forge", "checkpoint_id": checkpoint_id, "run_id": run_id}),
+        ],
+        capture_output=True,
+        env=env,
+        text=True,
+        timeout=40 * 60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "baseten model push failed: "
+            f"stdout={result.stdout[-2000:]} stderr={result.stderr[-4000:]}"
+        )
+
+    payload = json.loads(result.stdout or "{}")
+    return {
+        "artifact_uri": f"modal-volume://forge-checkpoints/{run_id}",
+        "model_id": payload.get("model", {}).get("id"),
+        "deployment_id": payload.get("deployment", {}).get("id"),
+        "deployment_status": payload.get("deployment", {}).get("status"),
+        "deployment_name": payload.get("deployment", {}).get("name") or deployment_name,
+        "model_name": payload.get("model", {}).get("name") or model_name,
+        "predict_url": payload.get("predict_url"),
+        "logs_url": payload.get("logs_url"),
+    }
+
+
 def format_training_text(row: dict[str, Any]) -> str:
     if "quote" in row:
         author = row.get("author") or "unknown"
@@ -115,3 +199,105 @@ def format_training_text(row: dict[str, Any]) -> str:
     if "text" in row:
         return str(row["text"])
     return " ".join(str(value) for value in row.values() if isinstance(value, str))
+
+
+def _baseten_safe_name(value: str) -> str:
+    normalized = "".join(ch.lower() if ch.isalnum() else "-" for ch in value)
+    parts = [part for part in normalized.split("-") if part]
+    return "-".join(parts)[:63] or "forge-checkpoint"
+
+
+def _truss_config(model_name: str) -> str:
+    return textwrap.dedent(
+        f"""
+        model_name: {model_name}
+        python_version: py311
+        model_metadata:
+          example_model_input:
+            prompt: "Reply with exactly: forge manual ok"
+            max_tokens: 24
+        requirements:
+          - torch>=2.5,<3
+          - transformers>=4.48,<5
+        resources:
+          accelerator: null
+          cpu: "1"
+          memory: 2Gi
+          use_gpu: false
+        secrets: {{}}
+        system_packages: []
+        environment_variables: {{}}
+        external_package_dirs: []
+        """
+    ).lstrip()
+
+
+def _truss_model_py(model_name: str) -> str:
+    return textwrap.dedent(
+        f'''
+        from __future__ import annotations
+
+        import time
+        import uuid
+        from pathlib import Path
+
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+
+        MODEL_NAME = "{model_name}"
+
+
+        class Model:
+            def __init__(self, **kwargs):
+                self._model = None
+                self._tokenizer = None
+
+            def load(self):
+                artifact_dir = Path(__file__).resolve().parents[1] / "model_artifacts"
+                self._tokenizer = AutoTokenizer.from_pretrained(artifact_dir)
+                if self._tokenizer.pad_token is None:
+                    self._tokenizer.pad_token = self._tokenizer.eos_token
+                self._model = AutoModelForCausalLM.from_pretrained(artifact_dir)
+                self._model.eval()
+
+            def predict(self, model_input):
+                prompt = _prompt_from_input(model_input)
+                max_tokens = int(model_input.get("max_tokens", model_input.get("max_new_tokens", 64)))
+                encoded = self._tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256)
+                with torch.no_grad():
+                    output = self._model.generate(
+                        **encoded,
+                        do_sample=False,
+                        max_new_tokens=max(1, min(max_tokens, 128)),
+                        pad_token_id=self._tokenizer.eos_token_id,
+                    )
+                generated = output[0][encoded["input_ids"].shape[-1]:]
+                content = self._tokenizer.decode(generated, skip_special_tokens=True).strip()
+                return {{
+                    "id": f"chatcmpl-{{uuid.uuid4().hex}}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": MODEL_NAME,
+                    "choices": [
+                        {{
+                            "index": 0,
+                            "message": {{"role": "assistant", "content": content}},
+                            "finish_reason": "stop",
+                        }}
+                    ],
+                }}
+
+
+        def _prompt_from_input(model_input):
+            if not isinstance(model_input, dict):
+                return str(model_input)
+            if model_input.get("messages"):
+                return "\\n".join(
+                    f"{{message.get('role', 'user')}}: {{message.get('content', '')}}"
+                    for message in model_input["messages"]
+                    if isinstance(message, dict)
+                )
+            return str(model_input.get("prompt") or "Hello")
+        '''
+    ).lstrip()

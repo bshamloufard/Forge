@@ -62,6 +62,11 @@ class Deployment(BaseModel):
     status: Literal["draft", "deploying", "live", "failed"]
     endpointUrl: str
     mode: ProviderMode
+    artifactUri: str | None = None
+    providerModelId: str | None = None
+    providerDeploymentId: str | None = None
+    providerDeploymentName: str | None = None
+    logsUrl: str | None = None
     createdAt: str
 
 
@@ -88,4 +93,3 @@ class ForgeState(BaseModel):
     checkpoints: list[Checkpoint]
     deployments: list[Deployment]
     verifierScores: list[VerifierScore]
-

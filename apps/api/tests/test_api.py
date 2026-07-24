@@ -67,6 +67,66 @@ def test_legacy_dashboard_state_route(tmp_path: Path, monkeypatch):
     assert state.json()["providers"]["modal"] in {"mock", "configured"}
 
 
+def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "baseten-state.json"))
+    monkeypatch.setenv("MODAL_TOKEN_ID", "modal-token-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "modal-token-secret")
+    monkeypatch.setenv("BASETEN_API_KEY", "baseten-api-key")
+    get_settings.cache_clear()
+
+    def fake_deploy(settings, *, checkpoint):
+        return {
+            "model_id": "model-custom",
+            "deployment_id": "deployment-custom",
+            "deployment_name": "forge-custom",
+            "predict_url": "https://model-custom.api.baseten.co/environments/production/predict",
+            "logs_url": "https://app.baseten.co/models/model-custom/logs",
+        }
+
+    def fake_predict(settings, *, deployment, prompt, messages=None):
+        return {
+            "id": "chatcmpl-custom",
+            "object": "chat.completion",
+            "model": deployment.providerModelId,
+            "endpoint": deployment.endpointUrl,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": f"custom deployment saw {prompt}"},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("forge_api.services.store.deploy_checkpoint_to_baseten", fake_deploy)
+    monkeypatch.setattr("forge_api.routers.deployments.predict_deployment", fake_predict)
+
+    client = TestClient(app)
+    created = client.post(
+        "/v1/sessions",
+        json={"name": "baseten artifact", "model": "sshleifer/tiny-gpt2", "recipe": "chat-sft", "targetSteps": 2},
+    )
+    assert created.status_code == 200
+    run_id = created.json()["run"]["id"]
+
+    checkpoint = client.post("/v1/checkpoints", json={"runId": run_id, "name": "artifact-checkpoint"})
+    assert checkpoint.status_code == 200
+    checkpoint_id = checkpoint.json()["checkpoint"]["id"]
+
+    deployed = client.post("/v1/deployments", json={"checkpointId": checkpoint_id, "target": "baseten"})
+    assert deployed.status_code == 200
+    deployment = deployed.json()["deployment"]
+    assert deployment["endpointUrl"] == "https://model-custom.api.baseten.co/environments/production/predict"
+    assert deployment["artifactUri"] == f"modal-volume://forge-checkpoints/{run_id}"
+    assert deployment["providerModelId"] == "model-custom"
+    assert deployment["providerDeploymentId"] == "deployment-custom"
+
+    invoked = client.post(f"/v1/deployments/{deployment['id']}/invoke", json={"prompt": "Hello custom"})
+    assert invoked.status_code == 200
+    assert invoked.json()["model"] == "model-custom"
+    assert invoked.json()["choices"][0]["message"]["content"] == "custom deployment saw Hello custom"
+
+
 def _disable_provider_env(monkeypatch):
     for key in [
         "MODAL_TOKEN_ID",
