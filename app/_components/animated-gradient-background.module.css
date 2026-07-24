@@ -1,0 +1,17 @@
+.container,
+.gradient {
+  position: absolute;
+  inset: 0;
+}
+
+.container {
+  z-index: -1;
+  overflow: hidden;
+  background: #080c11;
+  pointer-events: none;
+}
+
+.gradient {
+  transform: translateZ(0);
+  will-change: background;
+}
