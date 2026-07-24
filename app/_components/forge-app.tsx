@@ -17,6 +17,7 @@ import {
   Layers3,
   LineChart,
   Play,
+  Power,
   RotateCcw,
   Save,
   Search,
@@ -442,7 +443,12 @@ export function OverviewPage() {
           <CheckpointList checkpoints={state.checkpoints.slice(0, 4)} compact />
         </Panel>
         <Panel icon={Cloud} title="Serving status" eyebrow="Deployments">
-          <DeploymentList deployments={state.deployments.slice(0, 4)} providers={state.providers} />
+          <DeploymentList
+            deployments={state.deployments.slice(0, 4)}
+            providers={state.providers}
+            busy={null}
+            onStop={undefined}
+          />
           {latestCheckpoint ? (
             <p className="helper-copy">Latest checkpoint is ready for promotion to a serving target.</p>
           ) : null}
@@ -605,7 +611,13 @@ export function DeploymentsPage() {
     <div className="page-grid split">
       <section className="page-main">
         <Panel icon={Cloud} title="Deployments" eyebrow="Serving endpoints">
-          <DeploymentList deployments={forge.state.deployments} providers={forge.state.providers} expanded />
+          <DeploymentList
+            deployments={forge.state.deployments}
+            providers={forge.state.providers}
+            busy={forge.busy}
+            expanded
+            onStop={(deployment) => forge.mutate("stop-deployment", `/api/v1/deployments/${deployment.id}/stop`, {})}
+          />
         </Panel>
       </section>
 
@@ -1110,10 +1122,14 @@ function CheckpointList({
 function DeploymentList({
   deployments,
   providers,
+  busy,
+  onStop,
   expanded = false
 }: {
   deployments: Deployment[];
   providers: ProviderHealth;
+  busy: string | null;
+  onStop?: (deployment: Deployment) => void;
   expanded?: boolean;
 }) {
   return (
@@ -1132,6 +1148,7 @@ function DeploymentList({
             <span>Target</span>
             <span>Status</span>
             <span>Endpoint</span>
+            <span>Controls</span>
           </div>
           {deployments.map((deployment) => (
             <article className="table-row" key={deployment.id}>
@@ -1140,12 +1157,28 @@ function DeploymentList({
                   {deployment.target}
                   <ArrowUpRight size={14} />
                 </strong>
-                <span>{deployment.id}</span>
+                <span>{deployment.providerModelId ? `${deployment.providerModelId} / ${deployment.providerDeploymentId}` : deployment.id}</span>
               </div>
               <span className={`pill ${deployment.mode === "configured" ? "green" : "yellow"}`}>
                 {deployment.status} / {deployment.mode}
               </span>
               <span className="truncate">{deployment.endpointUrl}</span>
+              <div className="row-actions">
+                {onStop && deployment.status !== "stopped" && deployment.providerModelId && deployment.providerDeploymentId ? (
+                  <button
+                    className="icon-button danger"
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => onStop(deployment)}
+                    title="Stop Baseten deployment"
+                    aria-label={`Stop deployment ${deployment.id}`}
+                  >
+                    <Power size={15} />
+                  </button>
+                ) : (
+                  <span className="muted-cell">-</span>
+                )}
+              </div>
             </article>
           ))}
         </div>

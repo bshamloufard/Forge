@@ -192,6 +192,53 @@ def deploy_checkpoint_to_baseten(
     }
 
 
+@app.function(
+    image=image,
+    timeout=10 * 60,
+    cpu=1,
+    memory=1024,
+)
+def deactivate_baseten_deployment(
+    model_id: str,
+    deployment_id: str,
+    baseten_api_key: str,
+) -> dict[str, Any]:
+    if not baseten_api_key.strip():
+        raise ValueError("BASETEN_API_KEY is required")
+
+    env = os.environ.copy()
+    env["BASETEN_API_KEY"] = baseten_api_key
+    result = subprocess.run(
+        [
+            "baseten",
+            "model",
+            "deployment",
+            "deactivate",
+            "--model-id",
+            model_id,
+            "--deployment-id",
+            deployment_id,
+            "--yes",
+            "--output",
+            "json",
+        ],
+        capture_output=True,
+        env=env,
+        text=True,
+        timeout=8 * 60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "baseten deployment deactivate failed: "
+            f"stdout={result.stdout[-2000:]} stderr={result.stderr[-4000:]}"
+        )
+    return {
+        "model_id": model_id,
+        "deployment_id": deployment_id,
+        "stdout": result.stdout,
+    }
+
+
 def format_training_text(row: dict[str, Any]) -> str:
     if "quote" in row:
         author = row.get("author") or "unknown"

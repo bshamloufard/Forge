@@ -38,6 +38,8 @@ def invoke_deployment(
     deployment = next((item for item in state.deployments if item.id == deployment_id), None)
     if deployment is None:
         raise HTTPException(status_code=404, detail="Deployment not found")
+    if deployment.status == "stopped":
+        raise HTTPException(status_code=409, detail="Deployment is stopped")
     prompt = body.prompt
     if prompt is None and body.messages:
         prompt = "\n".join(f"{message.role}: {message.content}" for message in body.messages)
@@ -64,6 +66,20 @@ def invoke_deployment(
             }
         ],
     }
+
+
+@router.post("/v1/deployments/{deployment_id}/stop")
+@router.post("/api/deployments/{deployment_id}/stop")
+def stop_deployment(
+    deployment_id: str,
+    repository: StateRepository = Depends(get_repository),
+) -> dict[str, object]:
+    try:
+        return _dump(repository.stop_deployment(deployment_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Stop deployment failed: {exc}") from exc
 
 
 def _dump(result: dict[str, object]) -> dict[str, object]:

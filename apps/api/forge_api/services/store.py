@@ -6,7 +6,7 @@ from forge_api.ids import create_id
 from forge_api.models.domain import Checkpoint, Deployment, ForgeState, Project, Session, TrainingRun, VerifierScore
 from forge_api.providers.health import create_serving_endpoint
 from forge_api.providers.health import get_provider_health
-from forge_api.providers.modal_client import deploy_checkpoint_to_baseten, run_tiny_finetune
+from forge_api.providers.modal_client import deactivate_baseten_deployment, deploy_checkpoint_to_baseten, run_tiny_finetune
 from forge_api.recipes import recipes
 from forge_api.services.verifier import score_candidate
 from forge_api.settings import Settings
@@ -253,6 +253,19 @@ class StateRepository:
             createdAt=now(),
         )
         state.deployments.insert(0, deployment)
+        self.write(state)
+        return {"state": state, "deployment": deployment}
+
+    def stop_deployment(self, deployment_id: str) -> dict[str, object]:
+        state = self.read()
+        deployment = next((item for item in state.deployments if item.id == deployment_id), None)
+        if deployment is None:
+            raise KeyError("Deployment not found")
+
+        if deployment.target == "baseten" and deployment.mode == "configured":
+            deactivate_baseten_deployment(self.settings, deployment=deployment)
+
+        deployment.status = "stopped"
         self.write(state)
         return {"state": state, "deployment": deployment}
 

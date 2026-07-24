@@ -99,7 +99,11 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
             ],
         }
 
+    def fake_deactivate(settings, *, deployment):
+        return {"model_id": deployment.providerModelId, "deployment_id": deployment.providerDeploymentId}
+
     monkeypatch.setattr("forge_api.services.store.deploy_checkpoint_to_baseten", fake_deploy)
+    monkeypatch.setattr("forge_api.services.store.deactivate_baseten_deployment", fake_deactivate)
     monkeypatch.setattr("forge_api.routers.deployments.predict_deployment", fake_predict)
 
     client = TestClient(app)
@@ -127,6 +131,13 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
     assert invoked.status_code == 200
     assert invoked.json()["model"] == "model-custom"
     assert invoked.json()["choices"][0]["message"]["content"] == "custom deployment saw Hello custom"
+
+    stopped = client.post(f"/v1/deployments/{deployment['id']}/stop", json={})
+    assert stopped.status_code == 200
+    assert stopped.json()["deployment"]["status"] == "stopped"
+
+    reinvoked = client.post(f"/v1/deployments/{deployment['id']}/invoke", json={"prompt": "Hello custom"})
+    assert reinvoked.status_code == 409
 
 
 def _disable_provider_env(monkeypatch):

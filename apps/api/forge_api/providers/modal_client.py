@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from forge_api.models.domain import Checkpoint
+from forge_api.models.domain import Checkpoint, Deployment
 from forge_api.settings import Settings
 
 
@@ -41,6 +41,26 @@ def deploy_checkpoint_to_baseten(settings: Settings, *, checkpoint: Checkpoint) 
         checkpoint_name=checkpoint.name,
         baseten_api_key=settings.baseten_api_key,
         wait_for_live=settings.baseten_deployment_wait,
+    )
+
+
+def deactivate_baseten_deployment(settings: Settings, *, deployment: Deployment) -> dict[str, Any]:
+    if not settings.baseten_api_key:
+        raise RuntimeError("BASETEN_API_KEY is not configured")
+    if not deployment.providerModelId or not deployment.providerDeploymentId:
+        raise RuntimeError("Deployment does not have Baseten provider ids")
+
+    import modal
+
+    function = modal.Function.from_name(
+        settings.modal_app_name,
+        "deactivate_baseten_deployment",
+        environment_name=settings.modal_environment,
+    )
+    return function.remote(
+        model_id=deployment.providerModelId,
+        deployment_id=deployment.providerDeploymentId,
+        baseten_api_key=settings.baseten_api_key,
     )
 
 

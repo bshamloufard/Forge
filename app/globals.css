@@ -472,6 +472,17 @@ code {
   padding: 0;
 }
 
+.icon-button.danger {
+  color: var(--red);
+  border-color: rgba(194, 65, 58, 0.3);
+  background: var(--red-soft);
+}
+
+.icon-button.danger:hover {
+  border-color: rgba(194, 65, 58, 0.48);
+  background: #fde2e0;
+}
+
 .full-width {
   width: 100%;
 }
@@ -768,7 +779,7 @@ code {
 
 .deployments-table .table-head,
 .deployments-table .table-row {
-  grid-template-columns: minmax(180px, 0.7fr) minmax(150px, 0.45fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(180px, 0.7fr) minmax(150px, 0.45fr) minmax(260px, 1fr) 72px;
 }
 
 .table-head {
@@ -837,6 +848,11 @@ code {
 .row-actions .icon-button {
   width: 32px;
   min-height: 32px;
+}
+
+.muted-cell {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .terminal {

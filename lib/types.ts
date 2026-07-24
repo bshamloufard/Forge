@@ -56,9 +56,14 @@ export type Deployment = {
   id: string;
   checkpointId: string;
   target: "baseten" | "modal";
-  status: "draft" | "deploying" | "live" | "failed";
+  status: "draft" | "deploying" | "live" | "failed" | "stopped";
   endpointUrl: string;
   mode: ProviderMode;
+  artifactUri?: string | null;
+  providerModelId?: string | null;
+  providerDeploymentId?: string | null;
+  providerDeploymentName?: string | null;
+  logsUrl?: string | null;
   createdAt: string;
 };
 

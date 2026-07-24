@@ -59,7 +59,7 @@ class Deployment(BaseModel):
     id: str
     checkpointId: str
     target: Literal["baseten", "modal"]
-    status: Literal["draft", "deploying", "live", "failed"]
+    status: Literal["draft", "deploying", "live", "failed", "stopped"]
     endpointUrl: str
     mode: ProviderMode
     artifactUri: str | None = None
