@@ -19,7 +19,6 @@ type ProviderFormState = {
   modalTokenId: string;
   modalTokenSecret: string;
   basetenApiKey: string;
-  modalAppName: string;
   modalEnvironment: string;
   basetenModelId: string;
 };
@@ -28,13 +27,24 @@ type AccountResponse = {
   account?: SafeAccountSummary;
   error?: string;
   fieldErrors?: Partial<Record<keyof ProviderFormState, string[]>>;
+  verification?: {
+    modal?: {
+      status: "ready" | "invalid" | "unavailable" | "conflict";
+      message: string;
+      provisioned: boolean;
+    } | null;
+    baseten?: {
+      status: "ready" | "invalid" | "unavailable" | "conflict";
+      message: string;
+      provisioned: boolean;
+    } | null;
+  } | null;
 };
 
 const emptyForm: ProviderFormState = {
   modalTokenId: "",
   modalTokenSecret: "",
   basetenApiKey: "",
-  modalAppName: "",
   modalEnvironment: "",
   basetenModelId: ""
 };
@@ -57,11 +67,14 @@ export function ProviderSettingsForm({
     AccountResponse["fieldErrors"]
   >({});
   const [saved, setSaved] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("");
+  const [retryingModal, setRetryingModal] = useState(false);
   const hasChanges = Object.values(form).some((value) => value.trim());
 
   function updateField(name: keyof ProviderFormState, value: string) {
     setForm((current) => ({ ...current, [name]: value }));
     setSaved(false);
+    setSavedMessage("");
     setFieldErrors((current) => ({ ...current, [name]: undefined }));
   }
 
@@ -91,13 +104,51 @@ export function ProviderSettingsForm({
 
       setAccount(payload.account);
       setForm(emptyForm);
-      setSaved(true);
-      onSaved?.(payload.account);
+      const modalSetup = payload.verification?.modal;
+      if (modalSetup && modalSetup.status !== "ready") {
+        setSaved(false);
+        setError(`Credentials saved. ${modalSetup.message}`);
+      } else {
+        setSaved(true);
+        setSavedMessage(
+          modalSetup?.provisioned
+            ? "Settings saved. Forge installed and verified your Modal worker."
+            : payload.verification?.baseten
+              ? "Provider settings saved and connection verified."
+              : "Provider settings saved."
+        );
+        onSaved?.(payload.account);
+      }
       router.refresh();
     } catch {
       setError("Could not reach Forge. Check your connection and try again.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function retryModal() {
+    setRetryingModal(true);
+    setError("");
+    setSaved(false);
+    try {
+      const response = await fetch("/api/account/providers/retry-modal", {
+        method: "POST"
+      });
+      const payload = (await response.json()) as AccountResponse;
+      if (!response.ok || !payload.account) {
+        setError(payload.error || "Modal setup did not complete.");
+        return;
+      }
+      setAccount(payload.account);
+      setSaved(true);
+      setSavedMessage("Modal worker installed and verified.");
+      onSaved?.(payload.account);
+      router.refresh();
+    } catch {
+      setError("Could not reach Forge. Check your connection and try again.");
+    } finally {
+      setRetryingModal(false);
     }
   }
 
@@ -113,7 +164,9 @@ export function ProviderSettingsForm({
             <h2>Replace provider configuration</h2>
             <p>
               Leave a secret blank to keep its current value. Forge never reads
-              an existing secret back into your browser.
+              an existing secret back into your browser. Replacements are
+              verified before the saved value changes; Modal token ID and
+              secret are replaced together.
             </p>
           </div>
           <ShieldCheck size={20} />
@@ -125,14 +178,18 @@ export function ProviderSettingsForm({
           name="Modal"
           copy="Required for training jobs."
           configured={account.providers.modal}
+          credentialsStored={account.providers.modalCredentialsStored}
+          pending={["pending", "provisioning"].includes(
+            account.providers.modalWorkerState
+          )}
         />
         <div className={styles.fieldGrid}>
           <SecretField
             label="Token ID"
             name="modalTokenId"
             placeholder={
-              account.providers.modal
-                ? "Configured — enter to replace"
+              account.providers.modalCredentialsStored
+                ? "Saved — enter to replace"
                 : "Enter Modal token ID"
             }
             value={form.modalTokenId}
@@ -143,20 +200,12 @@ export function ProviderSettingsForm({
             label="Token secret"
             name="modalTokenSecret"
             placeholder={
-              account.providers.modal
-                ? "Configured — enter to replace"
+              account.providers.modalCredentialsStored
+                ? "Saved — enter to replace"
                 : "Enter Modal token secret"
             }
             value={form.modalTokenSecret}
             error={fieldErrors?.modalTokenSecret?.[0]}
-            onChange={updateField}
-          />
-          <TextField
-            label="App name"
-            name="modalAppName"
-            placeholder="Leave blank to keep current (default: forge-mvp)"
-            value={form.modalAppName}
-            error={fieldErrors?.modalAppName?.[0]}
             onChange={updateField}
           />
           <TextField
@@ -168,6 +217,24 @@ export function ProviderSettingsForm({
             onChange={updateField}
           />
         </div>
+        <p className={styles.fixedEndpoint}>
+          Forge owns and updates the reserved <code>forge-mvp</code> app in your
+          Modal workspace. The first install can take several minutes.
+        </p>
+        {account.providers.modalCredentialsStored &&
+        !account.providers.modal ? (
+          <button
+            className={styles.retryButton}
+            type="button"
+            disabled={busy || retryingModal}
+            onClick={retryModal}
+          >
+            {retryingModal ? (
+              <LoaderCircle className={styles.spin} size={15} />
+            ) : null}
+            {retryingModal ? "Retrying Modal setup…" : "Retry Modal setup"}
+          </button>
+        ) : null}
       </div>
 
       <div className={styles.providerSection}>
@@ -175,14 +242,15 @@ export function ProviderSettingsForm({
           name="Baseten"
           copy="Required for serving and deployment."
           configured={account.providers.baseten}
+          credentialsStored={account.providers.basetenCredentialsStored}
         />
         <div className={styles.fieldGrid}>
           <SecretField
             label="API key"
             name="basetenApiKey"
             placeholder={
-              account.providers.baseten
-                ? "Configured — enter to replace"
+              account.providers.basetenCredentialsStored
+                ? "Saved — enter to replace"
                 : "Enter Baseten API key"
             }
             value={form.basetenApiKey}
@@ -199,7 +267,8 @@ export function ProviderSettingsForm({
           />
         </div>
         <p className={styles.fixedEndpoint}>
-          Requests use Forge&apos;s allowlisted Baseten API endpoint.
+          Forge checks management access without running inference. Use a
+          personal key or a full-access team key.
         </p>
       </div>
 
@@ -212,7 +281,7 @@ export function ProviderSettingsForm({
       {saved ? (
         <p className={styles.formSuccess} role="status">
           <CheckCircle2 size={15} />
-          Provider settings saved. Secret fields have been cleared.
+          {savedMessage}
         </p>
       ) : null}
 
@@ -227,7 +296,7 @@ export function ProviderSettingsForm({
           disabled={busy || !account.available || !hasChanges}
         >
           {busy ? <LoaderCircle className={styles.spin} size={16} /> : null}
-          {busy ? "Saving…" : "Save settings"}
+          {busy ? "Verifying & saving…" : "Save & verify"}
         </button>
       </footer>
     </form>
@@ -351,12 +420,23 @@ export function ProviderOnboardingDialog({
 function ProviderHeading({
   name,
   copy,
-  configured
+  configured,
+  credentialsStored,
+  pending = false
 }: {
   name: string;
   copy: string;
   configured: boolean;
+  credentialsStored: boolean;
+  pending?: boolean;
 }) {
+  const label = configured
+    ? "Ready"
+    : pending
+      ? "Setting up"
+      : credentialsStored
+        ? "Needs attention"
+        : "Not configured";
   return (
     <div className={styles.providerHeading}>
       <div>
@@ -365,7 +445,7 @@ function ProviderHeading({
       </div>
       <span data-ready={configured}>
         {configured ? <CheckCircle2 size={13} /> : <CircleAlert size={13} />}
-        {configured ? "Configured" : "Not configured"}
+        {label}
       </span>
     </div>
   );

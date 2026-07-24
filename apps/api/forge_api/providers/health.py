@@ -8,7 +8,12 @@ def _mode_for(value: object) -> ProviderMode:
 
 def get_provider_health(settings: Settings) -> ProviderHealth:
     return ProviderHealth(
-        modal=_mode_for(settings.modal_token_id or settings.modal_token_secret),
+        modal=(
+            "configured"
+            if _mode_for(settings.modal_token_id) == "configured"
+            and _mode_for(settings.modal_token_secret) == "configured"
+            else "mock"
+        ),
         baseten=_mode_for(settings.baseten_api_key),
         supabase=_mode_for(
             settings.supabase_url and (settings.supabase_secret_key or settings.supabase_service_role_key)
@@ -33,4 +38,3 @@ def create_serving_endpoint(name: str, target: str, settings: Settings) -> dict[
         else f"https://{slug or 'checkpoint'}--forge-modal.modal.run/v1"
     )
     return {"mode": mode, "endpointUrl": endpoint}
-

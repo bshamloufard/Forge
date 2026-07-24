@@ -5,7 +5,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from forge_api.routers import capabilities, checkpoints, deployments, health, projects, runs, sampling, sessions, state, verifier
+from forge_api.routers import (
+    capabilities,
+    checkpoints,
+    deployments,
+    health,
+    projects,
+    providers,
+    runs,
+    sampling,
+    sessions,
+    state,
+    verifier,
+)
 from forge_api.settings import get_settings
 
 
@@ -81,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(state.router)
     app.include_router(capabilities.router)
+    app.include_router(providers.router)
     app.include_router(projects.router)
     app.include_router(sessions.router)
     app.include_router(runs.router)

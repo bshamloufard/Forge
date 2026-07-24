@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     modal_token_secret: str | None = Field(default=None, alias="MODAL_TOKEN_SECRET", repr=False)
     modal_app_name: str = Field(default="forge-mvp", alias="MODAL_APP_NAME")
     modal_environment: str = Field(default="main", alias="MODAL_ENVIRONMENT")
+    forge_modal_worker_revision: str = Field(
+        default="forge-worker-20260724.1",
+        alias="FORGE_MODAL_WORKER_REVISION",
+    )
 
     baseten_api_key: str | None = Field(default=None, alias="BASETEN_API_KEY", repr=False)
     baseten_base_url: str = Field(default="https://inference.baseten.co/v1", alias="BASETEN_BASE_URL")

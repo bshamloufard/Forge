@@ -14,10 +14,17 @@ export default async function DashboardLayout({
     "claim_provider_onboarding"
   );
   const account = await getAccountSummary(supabase, user);
-  const accountVersion =
-    account.providers.updatedAt ||
-    account.onboardingSeenAt ||
-    account.user.id;
+  const accountVersion = [
+    account.user.id,
+    account.onboardingSeenAt,
+    account.providers.updatedAt,
+    account.providers.modalCheckedAt,
+    account.providers.basetenCheckedAt,
+    account.providers.modalConnectionState,
+    account.providers.basetenConnectionState,
+    account.providers.modalWorkerState,
+    account.providers.modalWorkerRevision
+  ].join(":");
 
   return (
     <ForgeShell
