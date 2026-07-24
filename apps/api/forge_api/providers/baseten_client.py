@@ -66,7 +66,10 @@ def predict_deployment(
         json=payload,
         timeout=120,
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(f"{exc}; body={response.text[:1000]}") from exc
     data = response.json()
     if isinstance(data, dict) and "choices" in data:
         data["provider_mode"] = deployment.mode

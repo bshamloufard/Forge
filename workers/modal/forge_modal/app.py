@@ -223,8 +223,8 @@ def _truss_config(model_name: str) -> str:
           - transformers>=4.48,<5
         resources:
           accelerator: null
-          cpu: "1"
-          memory: 2Gi
+          cpu: "4"
+          memory: 16Gi
           use_gpu: false
         secrets: {{}}
         system_packages: []
