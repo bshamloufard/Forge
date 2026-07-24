@@ -1,13 +1,4 @@
 import type { Metadata } from "next";
-import {
-  ArrowRight,
-  Boxes,
-  CheckCircle2,
-  Cloud,
-  LockKeyhole,
-  Sparkles,
-  Workflow
-} from "lucide-react";
 import { redirect } from "next/navigation";
 import {
   getCurrentUser,
@@ -15,14 +6,15 @@ import {
   sanitizeNextPath
 } from "@/lib/auth";
 import { hasSupabasePublicConfig } from "@/lib/supabase/config";
+import { AnimatedGradientBackground } from "./_components/animated-gradient-background";
+import { AnvilLogo } from "./_components/anvil-logo";
 import styles from "./home.module.css";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Forge — Train, evaluate, and deploy models",
-  description:
-    "A focused control plane for post-training workflows, evaluation, checkpoints, and deployment."
+  title: "Forge — Sign in",
+  description: "Sign in to your Forge post-training workspace."
 };
 
 export default async function HomePage({
@@ -36,179 +28,71 @@ export default async function HomePage({
     ? await isGoogleProviderEnabled()
     : false;
   const user = authConfigured ? await getCurrentUser() : null;
+
   if (user) redirect(sanitizeNextPath(query.next));
 
   const next = sanitizeNextPath(query.next);
 
   return (
     <main className={styles.page}>
-      <nav className={styles.nav} aria-label="Landing navigation">
-        <a href="#top" className={styles.wordmark}>
-          <span>F</span>
-          Forge
-        </a>
-        <form action="/auth/google" method="post">
+      <AnimatedGradientBackground
+        breathing
+        gradientColors={[
+          "#080c11",
+          "#121d2a",
+          "#1c3042",
+          "#2b465d",
+          "#49465d",
+          "#34504f",
+          "#11171d"
+        ]}
+        gradientStops={[27, 43, 57, 70, 82, 93, 100]}
+        startingGap={118}
+        breathingRange={4}
+        animationSpeed={0.00045}
+        topOffset={7}
+      />
+
+      <div className={styles.vignette} aria-hidden="true" />
+
+      <section className={styles.signIn} aria-labelledby="forge-title">
+        <div className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden="true">
+            <AnvilLogo />
+          </span>
+          <h1 id="forge-title">Forge</h1>
+        </div>
+
+        <form action="/auth/google" method="post" className={styles.authForm}>
           <input type="hidden" name="next" value={next} />
           <button
-            className={styles.navAction}
+            className={styles.googleButton}
             type="submit"
             disabled={!googleEnabled}
           >
-            Sign in
-            <ArrowRight size={15} />
+            <GoogleMark />
+            <span>Continue with Google</span>
           </button>
         </form>
-      </nav>
 
-      <div id="top" className={styles.hero}>
-        <section className={styles.heroCopy}>
-          <p className={styles.eyebrow}>The post-training control plane</p>
-          <h1>From a base model to a running endpoint, in one workspace.</h1>
-          <p className={styles.lede}>
-            Configure training, inspect progress, evaluate outputs, save
-            checkpoints, and deploy verified models without stitching together
-            five dashboards.
+        {!authConfigured ? (
+          <p className={styles.notice} role="status">
+            Authentication setup is incomplete. Configure Supabase to enable
+            sign-in.
           </p>
-
-          <form action="/auth/google" method="post" className={styles.authForm}>
-            <input type="hidden" name="next" value={next} />
-            <button
-              className={styles.googleButton}
-              type="submit"
-              disabled={!googleEnabled}
-            >
-              <GoogleMark />
-              Continue with Google
-              <ArrowRight size={17} />
-            </button>
-            <span>
-              One account for training, evaluation, storage, and serving.
-            </span>
-          </form>
-
-          {!authConfigured ? (
-            <p className={styles.notice} role="status">
-              Authentication setup is incomplete. Configure Supabase to enable
-              sign-in.
-            </p>
-          ) : !googleEnabled ? (
-            <p className={styles.notice} role="status">
-              Google sign-in is being connected. Please check back shortly.
-            </p>
-          ) : query.auth_error ? (
-            <p className={styles.notice} role="alert">
-              Sign-in did not complete. Please try again.
-            </p>
-          ) : null}
-        </section>
-
-        <section className={styles.preview} aria-label="Forge workflow preview">
-          <div className={styles.previewHeader}>
-            <div>
-              <span className={styles.logoTile}>F</span>
-              <div>
-                <strong>Forge Research</strong>
-                <small>Training workspace</small>
-              </div>
-            </div>
-            <span className={styles.liveBadge}>
-              <span />
-              Connected
-            </span>
-          </div>
-
-          <ol className={styles.workflow}>
-            {["Configure", "Train", "Evaluate", "Save", "Deploy"].map(
-              (label, index) => (
-                <li
-                  key={label}
-                  className={index < 3 ? styles.complete : undefined}
-                >
-                  <span>
-                    {index < 3 ? <CheckCircle2 size={13} /> : index + 1}
-                  </span>
-                  {label}
-                </li>
-              )
-            )}
-          </ol>
-
-          <div className={styles.runCard}>
-            <div className={styles.runHeading}>
-              <div>
-                <small>SELECTED RUN</small>
-                <strong>Research run</strong>
-              </div>
-              <span>Running</span>
-            </div>
-            <div className={styles.progress}>
-              <span />
-            </div>
-            <div className={styles.metrics}>
-              <Metric label="STEP" value="34 / 100" />
-              <Metric label="LOSS" value="0.482" />
-              <Metric label="REWARD" value="0.71" />
-              <Metric label="VERIFIER" value="0.84" />
-            </div>
-          </div>
-
-          <div className={styles.providerStrip}>
-            <Provider icon={<Workflow size={15} />} label="Modal" />
-            <Provider icon={<Cloud size={15} />} label="Baseten" />
-            <Provider icon={<Boxes size={15} />} label="Supabase" />
-          </div>
-        </section>
-      </div>
-
-      <section className={styles.valueStrip} aria-label="Forge benefits">
-        <article>
-          <Sparkles size={18} />
-          <div>
-            <strong>Focused workflow</strong>
-            <p>Train, test, evaluate, and release without losing context.</p>
-          </div>
-        </article>
-        <article>
-          <LockKeyhole size={18} />
-          <div>
-            <strong>Your provider accounts</strong>
-            <p>Credentials stay server-side and are replace-only in Forge.</p>
-          </div>
-        </article>
-        <article>
-          <Workflow size={18} />
-          <div>
-            <strong>Traceable releases</strong>
-            <p>Keep runs, checkpoints, scores, and endpoints connected.</p>
-          </div>
-        </article>
+        ) : !googleEnabled ? (
+          <p className={styles.notice} role="status">
+            Google sign-in is being connected. Please check back shortly.
+          </p>
+        ) : query.auth_error ? (
+          <p className={styles.notice} role="alert">
+            Sign-in did not complete. Please try again.
+          </p>
+        ) : null}
       </section>
+
+      <p className={styles.footer}>The post-training workspace</p>
     </main>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <small>{label}</small>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function Provider({
-  icon,
-  label
-}: {
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <div>
-      {icon}
-      <span>{label}</span>
-      <i />
-    </div>
   );
 }
 
