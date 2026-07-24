@@ -769,7 +769,7 @@ code {
 
 .checkpoints-table .table-head,
 .checkpoints-table .table-row {
-  grid-template-columns: minmax(190px, 1.1fr) 80px 90px minmax(260px, 1fr) 68px;
+  grid-template-columns: minmax(190px, 1.1fr) 80px 90px minmax(260px, 1fr) 86px;
 }
 
 .checkpoints-table.compact-table .table-head,

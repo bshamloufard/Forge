@@ -102,8 +102,16 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
     def fake_deactivate(settings, *, deployment):
         return {"model_id": deployment.providerModelId, "deployment_id": deployment.providerDeploymentId}
 
+    def fake_delete_baseten(settings, *, deployment):
+        return {"model_id": deployment.providerModelId}
+
+    def fake_delete_artifact(settings, *, artifact_uri):
+        return {"artifact_uri": artifact_uri, "deleted": True}
+
     monkeypatch.setattr("forge_api.services.store.deploy_checkpoint_to_baseten", fake_deploy)
     monkeypatch.setattr("forge_api.services.store.deactivate_baseten_deployment", fake_deactivate)
+    monkeypatch.setattr("forge_api.services.store.delete_baseten_model", fake_delete_baseten)
+    monkeypatch.setattr("forge_api.services.store.delete_checkpoint_artifact", fake_delete_artifact)
     monkeypatch.setattr("forge_api.routers.deployments.predict_deployment", fake_predict)
 
     client = TestClient(app)
@@ -138,6 +146,16 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
 
     reinvoked = client.post(f"/v1/deployments/{deployment['id']}/invoke", json={"prompt": "Hello custom"})
     assert reinvoked.status_code == 409
+
+    deleted_deployment = client.post(f"/v1/deployments/{deployment['id']}/delete", json={})
+    assert deleted_deployment.status_code == 200
+    assert deleted_deployment.json()["deployment"]["id"] == deployment["id"]
+    assert client.get("/v1/deployments").json()["deployments"] == []
+
+    deleted_checkpoint = client.post(f"/v1/checkpoints/{checkpoint_id}/delete", json={})
+    assert deleted_checkpoint.status_code == 200
+    assert deleted_checkpoint.json()["checkpoint"]["id"] == checkpoint_id
+    assert client.get("/v1/checkpoints").json()["checkpoints"] == []
 
 
 def _disable_provider_env(monkeypatch):

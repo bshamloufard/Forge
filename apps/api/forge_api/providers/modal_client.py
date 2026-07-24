@@ -64,6 +64,40 @@ def deactivate_baseten_deployment(settings: Settings, *, deployment: Deployment)
     )
 
 
+def delete_baseten_model(settings: Settings, *, deployment: Deployment) -> dict[str, Any]:
+    if not settings.baseten_api_key:
+        raise RuntimeError("BASETEN_API_KEY is not configured")
+    if not deployment.providerModelId:
+        raise RuntimeError("Deployment does not have a Baseten model id")
+
+    import modal
+
+    function = modal.Function.from_name(
+        settings.modal_app_name,
+        "delete_baseten_model",
+        environment_name=settings.modal_environment,
+    )
+    return function.remote(
+        model_id=deployment.providerModelId,
+        baseten_api_key=settings.baseten_api_key,
+    )
+
+
+def delete_checkpoint_artifact(settings: Settings, *, artifact_uri: str) -> dict[str, Any]:
+    run_id = _run_id_from_artifact_uri(artifact_uri)
+    if not run_id:
+        return {"deleted": False, "reason": "unsupported artifact URI"}
+
+    import modal
+
+    function = modal.Function.from_name(
+        settings.modal_app_name,
+        "delete_checkpoint_artifact",
+        environment_name=settings.modal_environment,
+    )
+    return function.remote(run_id=run_id)
+
+
 def _run_id_from_artifact_uri(artifact_uri: str) -> str | None:
     prefix = "modal-volume://forge-checkpoints/"
     if artifact_uri.startswith(prefix):

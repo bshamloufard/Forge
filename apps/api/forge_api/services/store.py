@@ -6,7 +6,13 @@ from forge_api.ids import create_id
 from forge_api.models.domain import Checkpoint, Deployment, ForgeState, Project, Session, TrainingRun, VerifierScore
 from forge_api.providers.health import create_serving_endpoint
 from forge_api.providers.health import get_provider_health
-from forge_api.providers.modal_client import deactivate_baseten_deployment, deploy_checkpoint_to_baseten, run_tiny_finetune
+from forge_api.providers.modal_client import (
+    deactivate_baseten_deployment,
+    delete_baseten_model,
+    delete_checkpoint_artifact,
+    deploy_checkpoint_to_baseten,
+    run_tiny_finetune,
+)
 from forge_api.recipes import recipes
 from forge_api.services.verifier import score_candidate
 from forge_api.settings import Settings
@@ -268,6 +274,39 @@ class StateRepository:
         deployment.status = "stopped"
         self.write(state)
         return {"state": state, "deployment": deployment}
+
+    def delete_deployment(self, deployment_id: str) -> dict[str, object]:
+        state = self.read()
+        deployment = next((item for item in state.deployments if item.id == deployment_id), None)
+        if deployment is None:
+            raise KeyError("Deployment not found")
+
+        self._delete_provider_deployment(deployment)
+        state.deployments = [item for item in state.deployments if item.id != deployment_id]
+        self.write(state)
+        return {"state": state, "deployment": deployment}
+
+    def delete_checkpoint(self, checkpoint_id: str) -> dict[str, object]:
+        state = self.read()
+        checkpoint = next((item for item in state.checkpoints if item.id == checkpoint_id), None)
+        if checkpoint is None:
+            raise KeyError("Checkpoint not found")
+
+        deployments = [item for item in state.deployments if item.checkpointId == checkpoint_id]
+        for deployment in deployments:
+            self._delete_provider_deployment(deployment)
+
+        if get_provider_health(self.settings).modal == "configured":
+            delete_checkpoint_artifact(self.settings, artifact_uri=checkpoint.artifactUri)
+
+        state.deployments = [item for item in state.deployments if item.checkpointId != checkpoint_id]
+        state.checkpoints = [item for item in state.checkpoints if item.id != checkpoint_id]
+        self.write(state)
+        return {"state": state, "checkpoint": checkpoint, "deployments": deployments}
+
+    def _delete_provider_deployment(self, deployment: Deployment) -> None:
+        if deployment.target == "baseten" and deployment.mode == "configured" and deployment.providerModelId:
+            delete_baseten_model(self.settings, deployment=deployment)
 
 
 def _resolve_path(path: Path) -> Path:

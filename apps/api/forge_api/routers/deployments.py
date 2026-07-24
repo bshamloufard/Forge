@@ -82,5 +82,20 @@ def stop_deployment(
         raise HTTPException(status_code=502, detail=f"Stop deployment failed: {exc}") from exc
 
 
+@router.delete("/v1/deployments/{deployment_id}")
+@router.post("/v1/deployments/{deployment_id}/delete")
+@router.post("/api/deployments/{deployment_id}/delete")
+def delete_deployment(
+    deployment_id: str,
+    repository: StateRepository = Depends(get_repository),
+) -> dict[str, object]:
+    try:
+        return _dump(repository.delete_deployment(deployment_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Delete deployment failed: {exc}") from exc
+
+
 def _dump(result: dict[str, object]) -> dict[str, object]:
     return {key: value.model_dump() if hasattr(value, "model_dump") else value for key, value in result.items()}

@@ -24,5 +24,20 @@ def create_checkpoint(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.delete("/v1/checkpoints/{checkpoint_id}")
+@router.post("/v1/checkpoints/{checkpoint_id}/delete")
+@router.post("/api/checkpoints/{checkpoint_id}/delete")
+def delete_checkpoint(
+    checkpoint_id: str,
+    repository: StateRepository = Depends(get_repository),
+) -> dict[str, object]:
+    try:
+        return _dump(repository.delete_checkpoint(checkpoint_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Delete checkpoint failed: {exc}") from exc
+
+
 def _dump(result: dict[str, object]) -> dict[str, object]:
     return {key: value.model_dump() if hasattr(value, "model_dump") else value for key, value in result.items()}

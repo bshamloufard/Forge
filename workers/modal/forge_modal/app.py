@@ -239,6 +239,67 @@ def deactivate_baseten_deployment(
     }
 
 
+@app.function(
+    image=image,
+    timeout=10 * 60,
+    cpu=1,
+    memory=1024,
+)
+def delete_baseten_model(
+    model_id: str,
+    baseten_api_key: str,
+) -> dict[str, Any]:
+    if not baseten_api_key.strip():
+        raise ValueError("BASETEN_API_KEY is required")
+
+    env = os.environ.copy()
+    env["BASETEN_API_KEY"] = baseten_api_key
+    result = subprocess.run(
+        [
+            "baseten",
+            "model",
+            "delete",
+            "--model-id",
+            model_id,
+            "--yes",
+            "--output",
+            "json",
+        ],
+        capture_output=True,
+        env=env,
+        text=True,
+        timeout=8 * 60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "baseten model delete failed: "
+            f"stdout={result.stdout[-2000:]} stderr={result.stderr[-4000:]}"
+        )
+    return {
+        "model_id": model_id,
+        "stdout": result.stdout,
+    }
+
+
+@app.function(
+    image=image,
+    volumes={str(CHECKPOINT_ROOT): checkpoints},
+    timeout=10 * 60,
+    cpu=1,
+    memory=1024,
+)
+def delete_checkpoint_artifact(run_id: str) -> dict[str, Any]:
+    artifact_dir = CHECKPOINT_ROOT / run_id
+    if not artifact_dir.exists():
+        return {"run_id": run_id, "deleted": False}
+    if artifact_dir.is_dir():
+        shutil.rmtree(artifact_dir)
+    else:
+        artifact_dir.unlink()
+    checkpoints.commit()
+    return {"run_id": run_id, "deleted": True}
+
+
 def format_training_text(row: dict[str, Any]) -> str:
     if "quote" in row:
         author = row.get("author") or "unknown"

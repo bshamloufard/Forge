@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Sparkles,
   TerminalSquare,
+  Trash2,
   Zap
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -598,6 +599,11 @@ export function CheckpointsPage() {
               target: "baseten"
             })
           }
+          onDelete={(checkpoint) => {
+            if (window.confirm(`Delete checkpoint ${checkpoint.name}?`)) {
+              forge.mutate("delete-checkpoint", `/api/v1/checkpoints/${checkpoint.id}/delete`, {});
+            }
+          }}
         />
       </Panel>
     </div>
@@ -617,6 +623,11 @@ export function DeploymentsPage() {
             busy={forge.busy}
             expanded
             onStop={(deployment) => forge.mutate("stop-deployment", `/api/v1/deployments/${deployment.id}/stop`, {})}
+            onDelete={(deployment) => {
+              if (window.confirm(`Delete deployment ${deployment.id}?`)) {
+                forge.mutate("delete-deployment", `/api/v1/deployments/${deployment.id}/delete`, {});
+              }
+            }}
           />
         </Panel>
       </section>
@@ -1076,12 +1087,14 @@ function CheckpointList({
   checkpoints,
   busy,
   compact = false,
-  onDeploy
+  onDeploy,
+  onDelete
 }: {
   checkpoints: Checkpoint[];
   busy?: string | null;
   compact?: boolean;
   onDeploy?: (checkpoint: Checkpoint) => void;
+  onDelete?: (checkpoint: Checkpoint) => void;
 }) {
   if (checkpoints.length === 0) return <div className="empty">No checkpoints yet.</div>;
   return (
@@ -1091,7 +1104,7 @@ function CheckpointList({
         <span>Step</span>
         <span>Score</span>
         {!compact ? <span>Artifact</span> : null}
-        {!compact ? <span>Action</span> : null}
+        {!compact ? <span>Actions</span> : null}
       </div>
       {checkpoints.map((checkpoint) => (
         <article className="table-row" key={checkpoint.id}>
@@ -1103,15 +1116,28 @@ function CheckpointList({
           <span className="mono-value">{checkpoint.score}</span>
           {!compact ? <code>{checkpoint.artifactUri}</code> : null}
           {!compact ? (
-            <button
-              className="icon-button"
-              disabled={busy !== null}
-              onClick={() => onDeploy?.(checkpoint)}
-              title="Deploy checkpoint"
-              aria-label="Deploy checkpoint"
-            >
-              <Cloud size={16} />
-            </button>
+            <div className="row-actions">
+              <button
+                className="icon-button"
+                disabled={busy !== null}
+                onClick={() => onDeploy?.(checkpoint)}
+                title="Deploy checkpoint"
+                aria-label="Deploy checkpoint"
+              >
+                <Cloud size={16} />
+              </button>
+              {onDelete ? (
+                <button
+                  className="icon-button danger"
+                  disabled={busy !== null}
+                  onClick={() => onDelete(checkpoint)}
+                  title="Delete checkpoint artifact"
+                  aria-label={`Delete checkpoint ${checkpoint.name}`}
+                >
+                  <Trash2 size={15} />
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </article>
       ))}
@@ -1124,12 +1150,14 @@ function DeploymentList({
   providers,
   busy,
   onStop,
+  onDelete,
   expanded = false
 }: {
   deployments: Deployment[];
   providers: ProviderHealth;
   busy: string | null;
   onStop?: (deployment: Deployment) => void;
+  onDelete?: (deployment: Deployment) => void;
   expanded?: boolean;
 }) {
   return (
@@ -1178,6 +1206,18 @@ function DeploymentList({
                 ) : (
                   <span className="muted-cell">-</span>
                 )}
+                {onDelete && deployment.providerModelId ? (
+                  <button
+                    className="icon-button danger"
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => onDelete(deployment)}
+                    title="Delete Baseten model"
+                    aria-label={`Delete deployment ${deployment.id}`}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                ) : null}
               </div>
             </article>
           ))}
