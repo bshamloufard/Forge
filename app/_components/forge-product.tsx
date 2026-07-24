@@ -23,6 +23,7 @@ import {
   Sparkles,
   TerminalSquare,
   Trash2,
+  UserRound,
   Zap
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -33,6 +34,8 @@ import {
   useState
 } from "react";
 import { models, recipes } from "@/lib/recipes";
+import type { SafeAccountSummary } from "@/lib/account";
+import { ProviderOnboardingDialog } from "@/app/(dashboard)/account/provider-settings-form";
 import type {
   Checkpoint,
   Deployment,
@@ -74,8 +77,7 @@ type ForgeContextValue = {
   setRunForm: (value: RunForm) => void;
 };
 
-const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
-const apiPath = (path: string) => `${apiBase}${path}`;
+const apiPath = (path: string) => path;
 
 const navigation = [
   ["Train", "/runs", Activity],
@@ -86,15 +88,31 @@ const navigation = [
 const pageLabels: Record<string, string> = {
   "/runs": "Train",
   "/evaluate": "Evaluate",
-  "/deployments": "Deploy"
+  "/deployments": "Deploy",
+  "/account": "Account"
 };
 
 const ForgeContext = createContext<ForgeContextValue | null>(null);
 
-export function ForgeShell({ children }: { children: React.ReactNode }) {
+export function ForgeShell({
+  children,
+  initialAccount,
+  showOnboarding
+}: {
+  children: React.ReactNode;
+  initialAccount: SafeAccountSummary;
+  showOnboarding: boolean;
+}) {
+  const [account, setAccount] = useState(initialAccount);
+
   return (
     <ForgeProvider>
-      <ShellChrome>{children}</ShellChrome>
+      <ShellChrome account={account}>{children}</ShellChrome>
+      <ProviderOnboardingDialog
+        initialAccount={account}
+        showOnboarding={showOnboarding}
+        onAccountChange={setAccount}
+      />
     </ForgeProvider>
   );
 }
@@ -147,9 +165,25 @@ function ForgeProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    refresh().catch((event) => {
-      setError(event instanceof Error ? event.message : "Could not load Forge");
-    });
+    let active = true;
+
+    fetch(apiPath("/api/state"), { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await response.text());
+        return (await response.json()) as ApiState;
+      })
+      .then((payload) => {
+        if (active) setState(payload);
+      })
+      .catch((event) => {
+        if (active) {
+          setError(event instanceof Error ? event.message : "Could not load Forge");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const activeRun =
@@ -183,7 +217,13 @@ function ForgeProvider({ children }: { children: React.ReactNode }) {
   return <ForgeContext.Provider value={value}>{children}</ForgeContext.Provider>;
 }
 
-function ShellChrome({ children }: { children: React.ReactNode }) {
+function ShellChrome({
+  children,
+  account
+}: {
+  children: React.ReactNode;
+  account: SafeAccountSummary;
+}) {
   const pathname = usePathname();
   const forge = useForge();
   const project = forge.state?.project;
@@ -196,7 +236,8 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
             <AnvilLogo />
           </Link>
           <div className="brand-copy">
-            <strong>Ben Shamloufard</strong>
+            <strong>Forge</strong>
+            <span>{account.user.email}</span>
           </div>
         </div>
 
@@ -219,9 +260,19 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
 
         <div className="runtime-state">
           <span className="runtime-title">Runtime</span>
-          <RuntimeRow name="Training" mode={forge.state?.providers.modal} />
-          <RuntimeRow name="Serving" mode={forge.state?.providers.baseten} />
-          <RuntimeRow name="Storage" mode={forge.state?.providers.supabase} />
+          <RuntimeRow name="Training" configured={account.providers.modal} />
+          <RuntimeRow name="Serving" configured={account.providers.baseten} />
+          <RuntimeRow name="Storage" configured={account.providers.storage} />
+          <Link className="account-link" href="/account">
+            <span className="account-avatar" aria-hidden="true">
+              {initials(account.user.displayName)}
+            </span>
+            <span>
+              <strong>{account.user.displayName}</strong>
+              <small>Account & provider keys</small>
+            </span>
+            <UserRound size={15} />
+          </Link>
         </div>
       </aside>
 
@@ -245,7 +296,13 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
               <span>{forge.error}</span>
             </div>
           ) : null}
-          {!forge.state ? <LoadingState /> : children}
+          {pathname === "/account" ? (
+            children
+          ) : !forge.state ? (
+            <LoadingState />
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>
@@ -426,7 +483,11 @@ export function TrainPage() {
               </div>
             </div>
 
-            <RunInspector run={activeRun} session={activeSession} />
+            <RunInspector
+              key={activeSession.id}
+              run={activeRun}
+              session={activeSession}
+            />
           </div>
         </section>
       ) : (
@@ -685,8 +746,8 @@ export function DeployPage() {
           label="Serving runtime"
           value={
             forge.state.providers.baseten === "configured"
-              ? "Ready"
-              : "Setup needed"
+              ? "Configured"
+              : "Not configured"
           }
           icon={Server}
           tone={
@@ -756,10 +817,6 @@ function RunInspector({
   const forge = useReadyForge();
   const [tab, setTab] = useState<"test" | "logs">("test");
   const [prompt, setPrompt] = useState(recipes[session.recipe].defaultPrompt);
-
-  useEffect(() => {
-    setPrompt(recipes[session.recipe].defaultPrompt);
-  }, [session.recipe]);
 
   async function generateOutput() {
     try {
@@ -1411,18 +1468,32 @@ function Progress({ value }: { value: number }) {
 
 function RuntimeRow({
   name,
-  mode
+  configured
 }: {
   name: string;
-  mode?: "mock" | "configured";
+  configured: boolean;
 }) {
-  const ready = mode === "configured";
   return (
-    <div className="runtime-row">
-      <span className={`runtime-dot ${ready ? "ready" : ""}`} />
+    <Link
+      href="/account"
+      className="runtime-row"
+      aria-label={`${name}: ${configured ? "configured" : "not ready"}. Open account settings.`}
+    >
+      <span className={`runtime-dot ${configured ? "ready" : ""}`} />
       <span>{name}</span>
-      <small>{ready ? "Ready" : mode ? "Setup" : "…"}</small>
-    </div>
+      <small>{configured ? "Configured" : "Not ready"}</small>
+    </Link>
+  );
+}
+
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "F"
   );
 }
 

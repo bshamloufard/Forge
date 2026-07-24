@@ -10,8 +10,9 @@ out/
 
 # Local env files
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!**/.env.example
 
 # Logs
 *.log

@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from forge_api.main import app
+from forge_api.providers.baseten_client import _trusted_baseten_url
 from forge_api.settings import get_settings
 
 
@@ -158,7 +159,166 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
     assert client.get("/v1/checkpoints").json()["checkpoints"] == []
 
 
-def _disable_provider_env(monkeypatch):
+def test_internal_api_key_blocks_public_provider_operations(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "protected-state.json"))
+    monkeypatch.setenv("INTERNAL_API_KEY", "server-only-key")
+    _disable_provider_env(monkeypatch, keep_internal_key=True)
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    assert client.get("/health").status_code == 200
+    assert client.get("/v1/runs").status_code == 401
+    assert client.get("/v1/runs", headers={"X-Forge-Internal-Key": "wrong"}).status_code == 401
+    assert (
+        client.get("/v1/runs", headers={"X-Forge-Internal-Key": "server-only-key"}).status_code
+        == 200
+    )
+
+
+def test_production_internal_request_requires_verified_user_identity(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "identity-state.json"))
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("INTERNAL_API_KEY", "server-only-key")
+    _disable_provider_env(monkeypatch, keep_internal_key=True)
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    response = client.get(
+        "/v1/runs",
+        headers={"X-Forge-Internal-Key": "server-only-key"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "User identity is required"
+
+
+def test_state_is_isolated_by_authenticated_user(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "tenant-state.json"))
+    _disable_provider_env(monkeypatch)
+    get_settings.cache_clear()
+    client = TestClient(app)
+
+    user_a = {
+        "X-Forge-User-Id": "01bb0a78-f052-45b7-b758-77e4c603df34",
+        "X-Forge-User-Email": "a@example.com",
+    }
+    user_b = {
+        "X-Forge-User-Id": "f2f78e8c-3024-4545-a684-fcb6cc6f096b",
+        "X-Forge-User-Email": "b@example.com",
+    }
+    created = client.post(
+        "/v1/sessions",
+        headers=user_a,
+        json={
+            "name": "private run",
+            "model": "sshleifer/tiny-gpt2",
+            "recipe": "chat-sft",
+            "targetSteps": 2,
+        },
+    )
+    assert created.status_code == 200
+    assert client.get("/v1/runs", headers=user_a).json()["runs"]
+    assert client.get("/v1/runs", headers=user_b).json()["runs"] == []
+
+
+def test_authenticated_user_never_falls_back_to_global_provider_keys(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "fail-closed-state.json"))
+    monkeypatch.setenv("MODAL_TOKEN_ID", "founder-modal-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "founder-modal-secret")
+    monkeypatch.setenv("BASETEN_API_KEY", "founder-baseten-key")
+    monkeypatch.setenv("SUPABASE_URL", "")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    monkeypatch.setenv("INTERNAL_API_KEY", "")
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/state",
+        headers={
+            "X-Forge-User-Id": "fbcc23b6-5c64-4ea6-a92b-29309d4ef7ce",
+            "X-Forge-User-Email": "new-user@example.com",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["providers"]["modal"] == "mock"
+    assert response.json()["providers"]["baseten"] == "mock"
+
+
+def test_authenticated_user_without_provider_keys_cannot_train_or_deploy(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "not-ready-state.json"))
+    _disable_provider_env(monkeypatch)
+    get_settings.cache_clear()
+    client = TestClient(app)
+    user = {
+        "X-Forge-User-Id": "2c5c8d70-eeb9-4f14-af06-df64e5c4c083",
+        "X-Forge-User-Email": "not-ready@example.com",
+    }
+
+    created = client.post(
+        "/v1/sessions",
+        headers=user,
+        json={
+            "name": "not ready",
+            "model": "sshleifer/tiny-gpt2",
+            "recipe": "chat-sft",
+            "targetSteps": 2,
+        },
+    )
+    run_id = created.json()["run"]["id"]
+
+    training = client.post(
+        f"/v1/training-runs/{run_id}/forward-backward",
+        headers=user,
+        json={"microbatches": 1},
+    )
+    assert training.status_code == 409
+    assert "Configure Modal credentials" in training.json()["detail"]
+
+    checkpoint = client.post(
+        "/v1/checkpoints",
+        headers=user,
+        json={"runId": run_id, "name": "not-ready-checkpoint"},
+    )
+    deployment = client.post(
+        "/v1/deployments",
+        headers=user,
+        json={
+            "checkpointId": checkpoint.json()["checkpoint"]["id"],
+            "target": "baseten",
+        },
+    )
+    assert deployment.status_code == 409
+    assert "Configure both Modal and Baseten credentials" in deployment.json()["detail"]
+
+
+def test_baseten_endpoint_allowlist():
+    assert (
+        _trusted_baseten_url(
+            "https://model-123.api.baseten.co/environments/production/predict"
+        )
+        == "https://model-123.api.baseten.co/environments/production/predict"
+    )
+    for value in [
+        "http://model-123.api.baseten.co/predict",
+        "https://api.baseten.co.attacker.example/predict",
+        "https://user:password@model-123.api.baseten.co/predict",
+        "https://127.0.0.1/predict",
+    ]:
+        try:
+            _trusted_baseten_url(value)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError(f"Expected untrusted endpoint rejection: {value}")
+
+
+def _disable_provider_env(monkeypatch, *, keep_internal_key: bool = False):
     for key in [
         "MODAL_TOKEN_ID",
         "MODAL_TOKEN_SECRET",
@@ -168,3 +328,5 @@ def _disable_provider_env(monkeypatch):
         "SUPABASE_SERVICE_ROLE_KEY",
     ]:
         monkeypatch.setenv(key, "")
+    if not keep_internal_key:
+        monkeypatch.setenv("INTERNAL_API_KEY", "")

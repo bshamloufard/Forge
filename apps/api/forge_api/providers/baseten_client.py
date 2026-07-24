@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -57,8 +58,9 @@ def predict_deployment(
     if messages:
         payload["messages"] = [{"role": message.role, "content": message.content} for message in messages]
 
+    endpoint_url = _trusted_baseten_url(deployment.endpointUrl)
     response = httpx.post(
-        deployment.endpointUrl,
+        endpoint_url,
         headers={
             "Authorization": f"Bearer {settings.baseten_api_key}",
             "Content-Type": "application/json",
@@ -69,11 +71,13 @@ def predict_deployment(
     try:
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        raise RuntimeError(f"{exc}; body={response.text[:1000]}") from exc
+        raise RuntimeError(
+            f"Baseten deployment request failed with status {response.status_code}"
+        ) from exc
     data = response.json()
     if isinstance(data, dict) and "choices" in data:
         data["provider_mode"] = deployment.mode
-        data["endpoint"] = deployment.endpointUrl
+        data["endpoint"] = endpoint_url
         data["provider_model_id"] = deployment.providerModelId
         data["provider_deployment_id"] = deployment.providerDeploymentId
         return data
@@ -83,7 +87,7 @@ def predict_deployment(
         "object": "chat.completion",
         "model": deployment.providerModelId or deployment.checkpointId,
         "provider_mode": deployment.mode,
-        "endpoint": deployment.endpointUrl,
+        "endpoint": endpoint_url,
         "provider_model_id": deployment.providerModelId,
         "provider_deployment_id": deployment.providerDeploymentId,
         "choices": [
@@ -94,3 +98,12 @@ def predict_deployment(
             }
         ],
     }
+
+
+def _trusted_baseten_url(value: str) -> str:
+    parsed = urlparse(value)
+    hostname = (parsed.hostname or "").lower()
+    trusted_host = hostname == "inference.baseten.co" or hostname.endswith(".api.baseten.co")
+    if parsed.scheme != "https" or not trusted_host or parsed.username or parsed.password:
+        raise RuntimeError("Baseten returned an untrusted deployment endpoint")
+    return value

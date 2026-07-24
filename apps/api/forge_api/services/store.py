@@ -1,6 +1,9 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
+
+import httpx
 
 from forge_api.ids import create_id
 from forge_api.models.domain import Checkpoint, Deployment, ForgeState, Project, Session, TrainingRun, VerifierScore
@@ -14,6 +17,7 @@ from forge_api.providers.modal_client import (
     run_tiny_finetune,
 )
 from forge_api.recipes import recipes
+from forge_api.services.credentials import RequestIdentity
 from forge_api.services.verifier import score_candidate
 from forge_api.settings import Settings
 
@@ -23,19 +27,37 @@ def now() -> str:
 
 
 class StateRepository:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, identity: RequestIdentity | None = None):
         self.settings = settings
-        self.path = _resolve_path(settings.state_path)
+        self.identity = identity or RequestIdentity(user_id="local-default")
+        self.path = _resolve_path(settings, self.identity)
+        has_supabase_storage = bool(
+            settings.supabase_url
+            and (settings.supabase_secret_key or settings.supabase_service_role_key)
+        )
+        self.storage_object_path = (
+            f"user-state/{self.identity.safe_user_id}/forge-state.json"
+            if self.identity.authenticated
+            and (has_supabase_storage or settings.app_env.strip().lower() == "production")
+            else None
+        )
 
     def read(self) -> ForgeState:
+        if self.storage_object_path:
+            return self._read_from_supabase()
         try:
             return ForgeState.model_validate(json.loads(self.path.read_text()))
-        except Exception:
+        except FileNotFoundError:
             state = self.initial_state()
             self.write(state)
             return state
+        except (OSError, ValueError) as exc:
+            raise RuntimeError("Could not read the local Forge state") from exc
 
     def write(self, state: ForgeState) -> None:
+        if self.storage_object_path:
+            self._write_to_supabase(state)
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(state.model_dump_json(indent=2))
 
@@ -47,13 +69,64 @@ class StateRepository:
     def initial_state(self) -> ForgeState:
         created_at = now()
         return ForgeState(
-            project=Project(id="proj_default", name="Forge Research", organization="Default Org", createdAt=created_at),
+            project=Project(
+                id="proj_default",
+                name="Forge Research",
+                organization=self.identity.email or "Default Org",
+                createdAt=created_at,
+            ),
             sessions=[],
             runs=[],
             checkpoints=[],
             deployments=[],
             verifierScores=[],
         )
+
+    def _read_from_supabase(self) -> ForgeState:
+        url, headers = self._storage_request(download=True)
+        response = httpx.get(url, headers=headers, timeout=20)
+        if response.status_code == 404:
+            state = self.initial_state()
+            self._write_to_supabase(state)
+            return state
+        try:
+            response.raise_for_status()
+            return ForgeState.model_validate(response.json())
+        except (httpx.HTTPError, ValueError) as exc:
+            raise RuntimeError("Could not read the authenticated user's Forge state") from exc
+
+    def _write_to_supabase(self, state: ForgeState) -> None:
+        url, headers = self._storage_request()
+        response = httpx.post(
+            url,
+            headers={
+                **headers,
+                "content-type": "application/json",
+                "x-upsert": "true",
+            },
+            content=state.model_dump_json(indent=2).encode(),
+            timeout=20,
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise RuntimeError("Could not persist the authenticated user's Forge state") from exc
+
+    def _storage_request(self, *, download: bool = False) -> tuple[str, dict[str, str]]:
+        service_key = self.settings.supabase_secret_key or self.settings.supabase_service_role_key
+        if not self.settings.supabase_url or not service_key or not self.storage_object_path:
+            raise RuntimeError("Supabase Storage is not configured for authenticated state")
+        bucket = quote(self.settings.artifact_bucket, safe="")
+        object_path = quote(self.storage_object_path, safe="/")
+        operation = "object/authenticated" if download else "object"
+        url = (
+            f"{self.settings.supabase_url.rstrip('/')}/storage/v1/{operation}/"
+            f"{bucket}/{object_path}"
+        )
+        return url, {
+            "apikey": service_key,
+            "authorization": f"Bearer {service_key}",
+        }
 
     def create_session(self, *, name: str, model: str, recipe: str, target_steps: int | None) -> dict[str, object]:
         state = self.read()
@@ -62,7 +135,7 @@ class StateRepository:
             id=create_id("ses"),
             projectId=state.project.id,
             name=name,
-            creator="researcher@forge.local",
+            creator=self.identity.email or "researcher@forge.local",
             model=model,
             recipe=recipe,  # type: ignore[arg-type]
             createdAt=timestamp,
@@ -309,8 +382,13 @@ class StateRepository:
             delete_baseten_model(self.settings, deployment=deployment)
 
 
-def _resolve_path(path: Path) -> Path:
-    return path if path.is_absolute() else Path.cwd() / path
+def _resolve_path(settings: Settings, identity: RequestIdentity) -> Path:
+    path = settings.state_path
+    resolved = path if path.is_absolute() else Path.cwd() / path
+    founder_email = settings.founder_email.strip().lower()
+    if not identity.authenticated or (identity.email and identity.email == founder_email):
+        return resolved
+    return resolved.parent / "users" / identity.safe_user_id / resolved.name
 
 
 def _find_run(state: ForgeState, run_id: str) -> TrainingRun:
