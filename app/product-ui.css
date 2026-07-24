@@ -169,14 +169,16 @@ label {
   flex-direction: column;
   border-right: 1px solid var(--line-strong);
   background: var(--chrome);
-  padding: 16px 12px 12px;
+  padding: 0 12px 12px;
 }
 
 .brand-row {
+  height: 56px;
+  flex: 0 0 56px;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 4px 16px;
+  padding: 0 4px;
 }
 
 .brand-symbol,
@@ -1461,6 +1463,8 @@ label {
   }
 
   .brand-row {
+    height: auto;
+    flex: 0 1 auto;
     padding: 0;
   }
 
