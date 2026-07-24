@@ -711,6 +711,9 @@ function LogoDropdown<T extends string>({
   return (
     <div
       className="logo-dropdown-field"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setOpen(false);
+      }}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
