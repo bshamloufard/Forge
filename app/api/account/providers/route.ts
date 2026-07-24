@@ -5,10 +5,19 @@ import {
   readRequestText,
   RequestBodyTooLargeError
 } from "@/lib/request-body";
+import { configureProviders } from "@/lib/provider-validation";
 
 export const dynamic = "force-dynamic";
 
-const optionalSecret = z.string().trim().max(16_384).optional().default("");
+const optionalSecret = z
+  .string()
+  .trim()
+  .max(16_384)
+  .refine((value) => !value || /^[\x21-\x7e]+$/.test(value), {
+    message: "Use a provider credential containing visible ASCII characters only."
+  })
+  .optional()
+  .default("");
 const optionalSetting = (maximum: number) =>
   z.string().trim().max(maximum).optional().default("");
 
@@ -17,8 +26,7 @@ const providerInputSchema = z
     modalTokenId: optionalSecret,
     modalTokenSecret: optionalSecret,
     basetenApiKey: optionalSecret,
-    modalAppName: optionalSetting(255),
-    modalEnvironment: optionalSetting(255),
+    modalEnvironment: optionalSetting(64),
     basetenModelId: optionalSetting(512)
   })
   .strict()
@@ -31,17 +39,27 @@ const providerInputSchema = z
       });
     }
 
-    for (const [field, setting] of [
-      ["modalAppName", value.modalAppName],
-      ["modalEnvironment", value.modalEnvironment]
-    ] as const) {
-      if (setting && !/^[A-Za-z0-9._-]+$/.test(setting)) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [field],
-          message: "Use only letters, numbers, dots, underscores, and hyphens."
-        });
-      }
+    if (
+      value.modalEnvironment &&
+      (!/^[A-Za-z0-9][A-Za-z0-9._-]+$/.test(value.modalEnvironment) ||
+        value.modalEnvironment.toLowerCase().startsWith("en-"))
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["modalEnvironment"],
+        message:
+          "Use a valid Modal environment name that does not start with en-."
+      });
+    }
+    if (
+      value.basetenModelId &&
+      !/^[A-Za-z0-9._:/-]+$/.test(value.basetenModelId)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["basetenModelId"],
+        message: "Use a valid Baseten model identifier."
+      });
     }
   });
 
@@ -75,24 +93,23 @@ export async function POST(request: Request) {
   }
 
   const input = parsed.data;
-  const { error } = await auth.supabase.rpc("save_provider_credentials", {
-    p_modal_token_id: input.modalTokenId || null,
-    p_modal_token_secret: input.modalTokenSecret || null,
-    p_baseten_api_key: input.basetenApiKey || null,
-    p_modal_app_name: input.modalAppName || null,
-    p_modal_environment: input.modalEnvironment || null,
-    // This stays server-controlled until provider egress has an allowlist.
-    p_baseten_base_url: null,
-    p_baseten_model_id: input.basetenModelId || null
-  });
-
-  if (error) {
-    return jsonError("Could not save provider configuration.", 503);
+  const configuration = await configureProviders(auth.user, input);
+  if (!configuration.ok) {
+    return Response.json(
+      {
+        error: configuration.error,
+        fieldErrors: configuration.fieldErrors
+      },
+      {
+        status: configuration.status,
+        headers: noStoreHeaders()
+      }
+    );
   }
 
   const account = await getAccountSummary(auth.supabase, auth.user);
   return Response.json(
-    { account },
+    { account, verification: configuration.summary },
     {
       headers: noStoreHeaders()
     }

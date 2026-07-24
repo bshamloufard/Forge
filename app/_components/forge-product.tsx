@@ -261,7 +261,10 @@ function ShellChrome({
         <div className="runtime-state">
           <span className="runtime-title">Runtime</span>
           <RuntimeRow name="Training" configured={account.providers.modal} />
-          <RuntimeRow name="Serving" configured={account.providers.baseten} />
+          <RuntimeRow
+            name="Serving"
+            configured={account.providers.modal && account.providers.baseten}
+          />
           <RuntimeRow name="Storage" configured={account.providers.storage} />
           <Link className="account-link" href="/account">
             <span className="account-avatar" aria-hidden="true">
@@ -289,7 +292,11 @@ function ShellChrome({
               href="/account"
               aria-label={[
                 `Training: ${account.providers.modal ? "configured" : "not ready"}`,
-                `Serving: ${account.providers.baseten ? "configured" : "not ready"}`,
+                `Serving: ${
+                  account.providers.modal && account.providers.baseten
+                    ? "configured"
+                    : "not ready"
+                }`,
                 `Storage: ${account.providers.storage ? "configured" : "not ready"}`,
                 "Open account settings"
               ].join(". ")}
@@ -299,7 +306,11 @@ function ShellChrome({
                   className={`runtime-dot ${account.providers.modal ? "ready" : ""}`}
                 />
                 <span
-                  className={`runtime-dot ${account.providers.baseten ? "ready" : ""}`}
+                  className={`runtime-dot ${
+                    account.providers.modal && account.providers.baseten
+                      ? "ready"
+                      : ""
+                  }`}
                 />
                 <span
                   className={`runtime-dot ${account.providers.storage ? "ready" : ""}`}

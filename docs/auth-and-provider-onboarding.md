@@ -1,6 +1,6 @@
 # Authentication and Provider Onboarding
 
-Status: implemented, configured, and deployed. The four feature migrations
+Status: implemented, configured, and deployed. The six feature migrations
 listed below are applied to the hosted Supabase project. Google is enabled as
 the only public sign-in provider, and the founder account for
 `bshamloufard@berkeley.edu` is linked to Google and bootstrapped with the
@@ -133,15 +133,33 @@ The onboarding dialog and `/account` use the same server-mediated endpoint:
    field shape, and requires the two Modal token fields to be supplied together.
 3. The browser cannot choose the Baseten base URL. Forge keeps it fixed to the
    allowlisted service endpoint.
-4. `public.save_provider_credentials()` scopes the write with `auth.uid()`.
-5. New secrets are created or replace the existing Supabase Vault entries.
-6. The response contains only readiness booleans and timestamps.
-7. The UI clears all secret inputs. Existing plaintext is never loaded back
-   into the browser.
+4. The authenticated BFF sends candidate values, verified user identity, and
+   the server-only internal key to FastAPI.
+5. Baseten is checked with a read-only management request. It does not run
+   inference or create a resource.
+6. Modal authentication and environment access are checked in a fresh child
+   process with a minimal environment. This read-only step does not deploy.
+7. FastAPI calls the service-role-only, generation-checked save RPC. The RPC
+   writes Vault only if the provider generations still match the snapshot that
+   was validated. Browser roles cannot execute any provider-secret save RPC.
+8. The durable Modal worker state becomes `pending`. FastAPI acquires a
+   database lease, then installs or updates Forge's reserved `forge-mvp` app and
+   `forge-checkpoints` Volume in another fresh process.
+9. A generation-checked completion RPC records `ready` or a stable error code.
+   The response contains only safe status, readiness, and timestamps.
 
-Blank secret fields preserve the existing values. The current product offers
-replacement, not reveal. Removing a provider credential requires an
+An invalid or unavailable candidate leaves the previously saved credential
+unchanged. Blank secret fields preserve existing values. The current product
+offers replacement, not reveal. Removing a credential requires an
 administrative recovery procedure until a dedicated delete flow is added.
+
+The initial Modal installation can take several minutes while Modal builds the
+worker image. The credential and `pending` state are durable before that
+mutation starts. If the browser, web process, or API process is interrupted,
+Account shows the persisted non-ready state and offers **Retry Modal setup**.
+A database lease prevents concurrent setup for the same generation and allows
+recovery after a stale 25-minute lease. Transient credential-validation errors
+leave Vault untouched and ask the user to retry.
 
 ### Running Product Operations
 
@@ -150,7 +168,7 @@ For a training, serving, or verifier request:
 1. The same-origin BFF authenticates the cookie or supported bearer token.
 2. The BFF sends verified tenant headers and the shared internal key to Python.
 3. Python calls the service-role-only
-   `get_provider_credentials_for_service(user_id)` RPC.
+   `get_ready_provider_credentials_for_service(user_id, worker_revision)` RPC.
 4. Authenticated requests never fall back to the founder's process-level Modal
    or Baseten environment variables.
 5. Modal uses `modal.Client.from_credentials()` per request.
@@ -165,7 +183,7 @@ For a training, serving, or verifier request:
 
 ### Applied Feature Migrations
 
-All four feature migrations are applied to the hosted project:
+All six feature migrations are applied to the hosted project:
 
 | Migration | Purpose |
 | --- | --- |
@@ -173,6 +191,8 @@ All four feature migrations are applied to the hosted project:
 | `20260724063047_harden_provider_onboarding_and_status.sql` | Restricted onboarding updates, managed Baseten base URL, and real private-bucket readiness |
 | `20260724064236_forge_atomic_onboarding_claim.sql` | Atomic first-dashboard onboarding claim |
 | `20260724065201_remove_legacy_provider_onboarding_rpc.sql` | Removes the superseded non-atomic onboarding RPC from the exposed API surface |
+| `20260724090818_provider_validation_and_provisioning_state.sql` | Service-only generation-CAS saves, persisted validation/readiness, revision-gated runtime credentials, and durable Modal provisioning leases |
+| `20260724091053_fix_provider_generation_update.sql` | Qualifies generation columns in the validated-save RPC and preserves its service-only grants |
 
 Do not rewrite an applied migration. Add a new forward migration for future
 changes.
@@ -199,12 +219,15 @@ changes.
 - UUID references to three Vault secrets: Modal token ID, Modal token secret,
   and Baseten API key.
 - Non-secret Modal app/environment and Baseten model configuration.
+- Provider-specific configuration generations and validation timestamps.
+- Modal worker state, trusted revision, lease timestamp, and stable error code.
 - Created and updated timestamps.
 
 The table and helper functions are revoked from `public`, `anon`, and
-`authenticated`. Authenticated users can call the scoped save/status RPCs, but
-only `service_role` can call the function that reads `vault.decrypted_secrets`.
-Deleting a credential row deletes its referenced Vault secrets.
+`authenticated`. Authenticated users can call only the safe status RPC. Only
+`service_role` can read decrypted values, save validated candidates, or change
+provisioning state. Deleting a credential row deletes its referenced Vault
+secrets.
 
 Vault encrypts secrets at rest and in backups. Access to its decrypted view is
 equivalent to access to the underlying provider accounts and must remain
@@ -255,9 +278,11 @@ them in build logs. Successful output reports the email and a redacted
 verification result only.
 
 Rerun the script only to recover the founder account or rotate the founder's
-stored provider values. After the first Google login, verify that Supabase links
-the Google identity to the existing confirmed-email Auth user rather than
-creating a second user.
+stored provider values. Bootstrap intentionally records restored credentials as
+unverified and the Modal worker as pending; follow it with server-side provider
+validation and Modal provisioning before declaring the account ready. After the
+first Google login, verify that Supabase links the Google identity to the
+existing confirmed-email Auth user rather than creating a second user.
 
 ## Production Configuration
 
@@ -324,6 +349,7 @@ later syncs. Add or verify those values manually in the Render Dashboard.
 | `APP_BASE_URL` | `https://forge-web-ykmh.onrender.com` |
 | `API_INTERNAL_BASE_URL` | `https://forge-api-nvva.onrender.com` |
 | `NEXT_PUBLIC_API_BASE_URL` | Empty; browsers use same-origin BFF routes |
+| `FORGE_MODAL_WORKER_REVISION` | Must match the API's trusted worker revision |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://uxlbzroevcdlyilfxviw.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key |
 | `INTERNAL_API_KEY` | `fromService` reference to `forge-api` |
@@ -339,6 +365,7 @@ later syncs. Add or verify those values manually in the Render Dashboard.
 | `SUPABASE_SERVICE_ROLE_KEY` | Legacy fallback only, if still required |
 | `INTERNAL_API_KEY` | Render-generated value |
 | `ARTIFACT_BUCKET` | `checkpoints` or the application default |
+| `FORGE_MODAL_WORKER_REVISION` | Current trusted Forge worker revision |
 
 Never expose the Supabase secret/service-role key or internal key through a
 `NEXT_PUBLIC_` variable. The two free Render web services cannot use private
@@ -396,14 +423,16 @@ seed file exists. Never run `db reset` against the hosted project.
 ### 3. Deploy Safely
 
 The feature database migrations and founder bootstrap are already complete.
+For a future provider-contract release:
 
-For the safest transition from the legacy direct-browser API:
-
-1. Deploy `forge-web` first. The new BFF sends the internal key and tenant
-   identity; the legacy API ignores the extra headers.
-2. Verify authenticated BFF requests reach the API.
-3. Deploy `forge-api` to enforce the internal key and request-scoped credentials.
-4. Verify direct non-health requests to the Python URL now return `401`.
+1. Apply forward migrations and verify their hosted version numbers match the
+   local filenames.
+2. Revalidate any pre-existing provider credentials and complete the current
+   Modal worker revision before switching runtime reads to the ready-only RPC.
+3. Deploy `forge-api`, then verify direct non-health requests to the Python URL
+   return `401`.
+4. Deploy `forge-web` with the same `FORGE_MODAL_WORKER_REVISION` and verify an
+   authenticated account/settings request.
 5. Verify both health checks:
 
    ```bash
@@ -431,7 +460,12 @@ ephemeral Render filesystem.
 | Public callers trigger provider-spending operations | Same-origin authenticated BFF, server-only internal key, production fail-closed API | Internal-key compromise requires immediate rotation |
 | Caller spoofs another tenant | BFF overwrites identity headers from Supabase `getUser()`; Python validates UUID | Python trusts the BFF/internal-key boundary rather than independently validating a user JWT |
 | User reads another user's profile or credentials | `auth.uid()` RLS/RPC scoping; private credential table; service-role-only decrypted RPC | A leaked Supabase server key bypasses RLS |
-| Provider plaintext reaches the browser | Replace-only form, blank responses, Vault references, no decrypted client RPC | Browser extensions can observe values while the user types them |
+| Provider plaintext reaches the browser | Replace-only form, fixed safe validation responses, Vault references, no decrypted client RPC | Browser extensions can observe values while the user types them |
+| A bad replacement destroys a working credential | Candidate is verified before the service-only generation-CAS Vault RPC; failed validation does not write | Provider access can be revoked after the last successful check |
+| Modal SDK state crosses tenants | Every setup attempt runs in a fresh child process; inherited Modal credentials are stripped | Host/process compromise can still expose in-flight secrets |
+| Forge deploys stale or partial worker code | `forge-mvp` is explicitly reserved and managed by Forge; every setup deploys the current tagged revision and post-checks all functions and the Volume | Users must not use `forge-mvp` for unrelated Modal code |
+| Concurrent saves combine unmatched tokens/settings | Provider-specific generations are compared and incremented in one locked RPC | Cross-provider external operations are not one distributed transaction |
+| Provisioning request is interrupted | Durable pending/provisioning/error state, generation CAS, database lease, and Account retry | A free Render instance can still delay work until the user retries |
 | Founder keys leak to skipped/new users | Authenticated request settings start with provider secrets cleared; per-user Vault lookup | Legacy process-level keys should still be removed after smoke testing |
 | OAuth open redirect or host confusion | Relative-path sanitization and fixed `APP_BASE_URL` | Every custom-domain change must update Google, Supabase, and Render together |
 | Cached session or account response leaks | Private/no-store headers on proxy, callback, account, and BFF responses | Upstream cache configuration must continue honoring these headers |
@@ -474,14 +508,19 @@ remain unchecked.
 - [x] Account and bottom-left status links remain available, including at tablet
       and mobile breakpoints.
 - [x] Storage is ready for every account when the private bucket exists.
-- [x] Modal and Baseten remain not ready until their credential references exist.
+- [x] Modal and Baseten remain not ready until validation succeeds, and Modal
+      also remains not ready until the trusted worker revision is provisioned.
 
 ### Credential Security
 
-- [ ] Modal token ID and secret must be replaced together.
+- [x] Modal token ID and secret must be replaced together.
 - [x] Saving clears secret fields and never returns stored plaintext.
 - [x] Refreshing `/account` leaves all secret inputs blank.
 - [x] Replacing one provider does not reveal or erase an omitted provider.
+- [x] Invalid or unavailable candidates do not replace a saved key.
+- [x] Rejected internal validation bodies never echo their secret input.
+- [x] Authenticated browser roles cannot execute the provider-secret save RPC.
+- [x] Concurrent saves use provider-specific generation compare-and-swap.
 - [ ] Responses, server logs, Render logs, HTML, localStorage, and analytics
       contain no provider plaintext.
 - [x] `anon` and `authenticated` roles cannot call the decrypted credential RPC.
@@ -495,6 +534,9 @@ remain unchecked.
 - [x] Public health responses contain no provider readiness details.
 - [x] An authenticated BFF request is scoped to the verified user UUID.
 - [x] The founder can run the existing Modal workflow with Vault credentials.
+- [x] The founder Modal app, five required functions, and Volume pass a
+      metadata-only readiness check.
+- [x] The founder Baseten key passes a no-inference management-access check.
 - [ ] A new user's Modal token can access the configured app and environment.
 - [ ] Baseten serving uses the saved user key and rejects a non-Baseten endpoint.
 - [x] Missing provider configuration fails without falling back to
@@ -502,7 +544,8 @@ remain unchecked.
 
 ### Persistence and Deployment
 
-- [x] All four feature migrations appear in the hosted migration history.
+- [x] All six feature migrations appear in the hosted migration history with
+      filenames matching the hosted versions.
 - [x] The founder profile, credential references, and state object exist.
 - [x] A new user's state object uses only that Auth UUID in its path.
 - [x] User state survives API restart, spin-down, and redeploy.
@@ -528,11 +571,11 @@ remain unchecked.
 - The Storage object contains control-plane metadata. Current model checkpoint
   binaries remain in the user's Modal Volume and are referenced with
   `modal-volume://` URIs.
-- Provider readiness currently means credential references exist. It does not
-  prove the token is valid or that the expected provider resource exists.
-- A user's Modal account must already contain the configured `forge-mvp`
-  functions and environment. Forge does not deploy those functions during
-  onboarding.
+- Provider readiness records the most recent successful setup, not continuous
+  health. A token revoked later can remain displayed as ready until the next
+  replacement or provider operation fails.
+- Forge manages and may replace all functions under the reserved `forge-mvp`
+  Modal app name. Users must keep unrelated functions in another Modal app.
 - Supabase Vault is currently a public-alpha product. Reassess its maturity and
   recovery model before compliance-sensitive use.
 - FastAPI authenticates the trusted BFF with the internal key and then trusts

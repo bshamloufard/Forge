@@ -71,18 +71,37 @@ export default async function AccountPage() {
           label="Training"
           provider="Modal"
           ready={account.providers.modal}
+          status={
+            account.providers.modal
+              ? "Ready"
+              : account.providers.modalCredentialsStored
+                ? ["pending", "provisioning"].includes(
+                    account.providers.modalWorkerState
+                  )
+                  ? "Setting up"
+                  : "Needs attention"
+                : "Not configured"
+          }
         />
         <ReadinessCard
           icon={<Server size={17} />}
           label="Serving"
           provider="Baseten"
-          ready={account.providers.baseten}
+          ready={account.providers.modal && account.providers.baseten}
+          status={
+            account.providers.modal && account.providers.baseten
+              ? "Ready"
+              : account.providers.basetenCredentialsStored
+                ? "Waiting on provider setup"
+                : "Not configured"
+          }
         />
         <ReadinessCard
           icon={<Database size={17} />}
           label="Storage"
           provider="Supabase"
           ready={account.providers.storage}
+          status={account.providers.storage ? "Ready" : "Not configured"}
         />
       </section>
 
@@ -117,12 +136,14 @@ function ReadinessCard({
   icon,
   label,
   provider,
-  ready
+  ready,
+  status
 }: {
   icon: React.ReactNode;
   label: string;
   provider: string;
   ready: boolean;
+  status: string;
 }) {
   const tone: ReadinessTone = ready ? "ready" : "setup";
   return (
@@ -134,7 +155,7 @@ function ReadinessCard({
       <strong>{provider}</strong>
       <p>
         {ready ? <CheckCircle2 size={14} /> : <CircleAlert size={14} />}
-        {ready ? "Configured" : "Not configured"}
+        {status}
       </p>
     </article>
   );
