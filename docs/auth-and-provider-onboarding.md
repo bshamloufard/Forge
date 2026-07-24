@@ -1,11 +1,10 @@
 # Authentication and Provider Onboarding
 
-Status: implemented and deployed. The four feature migrations listed below are
-applied to the hosted Supabase project, and the founder account for
-`bshamloufard@berkeley.edu` is bootstrapped with the existing provider
-configuration. The Google Cloud OAuth client is the only remaining external
-configuration gate; Forge keeps the Google actions disabled until Supabase
-reports that the provider is enabled.
+Status: implemented, configured, and deployed. The four feature migrations
+listed below are applied to the hosted Supabase project. Google is enabled as
+the only public sign-in provider, and the founder account for
+`bshamloufard@berkeley.edu` is linked to Google and bootstrapped with the
+existing provider configuration.
 
 This runbook is the source of truth for Google sign-in, account creation,
 replace-only provider credentials, per-user state, and the one-time onboarding
@@ -57,10 +56,9 @@ The deployed services and canonical URLs are:
 project. Use the exact Render hostname above or add an owned custom domain such
 as `app.example.com` in Render and update every OAuth URL together.
 
-The production web service currently runs commit
-`1132e3b8a8bd787ffb10ec9d3093850b8892ef03`. The secure API revision and database
-migrations are live. Render auto-deploy tracks `main`, so merge pull request #9
-before a later `main` deployment to make this release durable.
+The secure web/API revisions and database migrations are live. Render
+auto-deploy tracks `main`, so the release must also remain merged into `main`;
+manual feature-branch deploys alone are not a durable release.
 
 ### Request Trust Boundary
 
@@ -224,6 +222,10 @@ BFF.
 
 Storage readiness means the private `checkpoints` bucket exists. New users do
 not provide Supabase credentials because Forge supplies the shared storage.
+On first access, Forge treats Supabase Storage's structured
+`statusCode: 404`/`error: not_found` response as a missing object and creates
+the initial state. Other Storage 400 responses fail closed and never overwrite
+state.
 
 ## Founder Bootstrap
 
@@ -232,9 +234,12 @@ The founder account is already bootstrapped:
 - Email: `bshamloufard@berkeley.edu`
 - Auth user: created and email-confirmed
 - App metadata: founder role assigned
-- Modal and Baseten secrets: stored in Vault and verified without printing them
+- Modal and Baseten secrets: stored in Vault without printing them; Modal was
+  exercised against the founder workspace, while a live Baseten deployment
+  smoke remains pending
 - Onboarding: marked seen
 - State: initialized at the founder's UUID-scoped Storage path
+- Google identity: linked to the same existing Auth UUID
 
 The script is idempotent for account lookup, provider-secret replacement, and
 state initialization:
@@ -258,29 +263,33 @@ creating a second user.
 
 ### Google Cloud OAuth Client
 
-Use a Web application OAuth client.
+Production uses the dedicated Google Cloud project `Forge Web`
+(`forge-web-503407`). Its OAuth audience is External and In production, and it
+has one enabled Web application client and one enabled client secret.
 
 Authorized JavaScript origins:
 
 ```text
 https://forge-web-ykmh.onrender.com
-http://localhost:3000
 ```
 
 Authorized redirect URIs:
 
 ```text
 https://uxlbzroevcdlyilfxviw.supabase.co/auth/v1/callback
-http://127.0.0.1:54321/auth/v1/callback
 ```
 
 The Google redirect URI is the Supabase callback, not the Forge callback. Store
 the Google client ID and secret in the Supabase Google provider configuration;
 they do not belong in Render.
 
-Request only basic sign-in identity scopes: `openid`, email, and profile. Before
-a public branded launch, configure the consent screen, support email, homepage,
-privacy policy, terms link, and owned-domain verification required by Google.
+Request only basic sign-in identity scopes: `openid`, email, and profile. The
+consent app name and support/developer email are configured. Before a broader
+branded launch, add the final homepage, privacy policy, terms link, owned custom
+domain, and any Google verification that those additions require.
+
+Create a separate development OAuth client before enabling local Google login;
+do not add local origins to the production client by default.
 
 ### Supabase Auth
 
@@ -292,20 +301,15 @@ https://forge-web-ykmh.onrender.com
 
 Redirect allow list:
 https://forge-web-ykmh.onrender.com/auth/callback
-http://localhost:3000/auth/callback
-http://127.0.0.1:3000/auth/callback
 ```
 
 In **Authentication → Providers → Google**:
 
-- Enable Google.
-- Set the Google Web client ID.
-- Set the Google client secret.
-- Keep new-user sign-up enabled for the public signup flow.
-- After a successful founder and test-user Google smoke, disable the Email
-  provider if Forge is intended to be Google-only. Leaving Email enabled allows
-  direct email/password signup through the Supabase Auth API even though the
-  Forge landing page does not advertise it.
+- Google is enabled with the dedicated production Web client.
+- New-user sign-up is enabled for the public signup flow.
+- Email is disabled, so public account creation is Google-only.
+- Skip nonce checks, users without email, anonymous sign-in, and manual identity
+  linking remain disabled.
 
 ### Render
 
@@ -440,16 +444,24 @@ event, committed file, or client storage, treat it as compromised and rotate it.
 
 ## Acceptance Checklist
 
+Production verification on 2026-07-24 covered the founder's real Google OAuth
+flow and linked identity. Two temporary isolated Auth users covered profile
+creation, the atomic `true`/`false` onboarding claim, UUID-only RLS visibility,
+first-state creation, provider save/replace, and response redaction; their
+Storage objects, Auth rows, and test Vault secrets were deleted afterward.
+Items that still require a second real Google account or provider workspace
+remain unchecked.
+
 ### Authentication
 
-- [ ] `/` is public and shows the Google sign-in action.
-- [ ] An unauthenticated request to `/runs` redirects to `/` with a safe relative
+- [x] `/` is public and shows the Google sign-in action.
+- [x] An unauthenticated request to `/runs` redirects to `/` with a safe relative
       return path.
-- [ ] Google sign-in returns through Supabase and `/auth/callback`, then lands on
+- [x] Google sign-in returns through Supabase and `/auth/callback`, then lands on
       `/runs`.
-- [ ] An invalid or expired session receives `401` from protected BFF routes.
-- [ ] Sign-out uses `POST`, clears the local session, and returns to `/`.
-- [ ] The founder Google identity links to the existing
+- [x] An invalid or expired session receives `401` from protected BFF routes.
+- [x] Sign-out uses `POST`, clears the local session, and returns to `/`.
+- [x] The founder Google identity links to the existing
       `bshamloufard@berkeley.edu` Auth user.
 
 ### Onboarding and Account
@@ -458,48 +470,56 @@ event, committed file, or client storage, treat it as compromised and rotate it.
 - [ ] The onboarding dialog opens once on the first dashboard load.
 - [ ] With two simultaneous first-load tabs, at most one dialog opens.
 - [ ] Skip, close, refresh, sign-out/sign-in, and later visits do not reopen it.
-- [ ] The founder does not see the dialog.
-- [ ] Account and bottom-left status links remain available after skipping.
-- [ ] Storage is ready for every account when the private bucket exists.
-- [ ] Modal and Baseten remain not ready until their credential references exist.
+- [x] The founder does not see the dialog.
+- [x] Account and bottom-left status links remain available, including at tablet
+      and mobile breakpoints.
+- [x] Storage is ready for every account when the private bucket exists.
+- [x] Modal and Baseten remain not ready until their credential references exist.
 
 ### Credential Security
 
 - [ ] Modal token ID and secret must be replaced together.
-- [ ] Saving clears secret fields and never returns stored plaintext.
-- [ ] Refreshing `/account` leaves all secret inputs blank.
-- [ ] Replacing one provider does not reveal or erase an omitted provider.
+- [x] Saving clears secret fields and never returns stored plaintext.
+- [x] Refreshing `/account` leaves all secret inputs blank.
+- [x] Replacing one provider does not reveal or erase an omitted provider.
 - [ ] Responses, server logs, Render logs, HTML, localStorage, and analytics
       contain no provider plaintext.
-- [ ] `anon` and `authenticated` roles cannot call the decrypted credential RPC.
+- [x] `anon` and `authenticated` roles cannot call the decrypted credential RPC.
 - [ ] User A cannot select, update, invoke, or read User B's profile, provider
       configuration, or state.
 
 ### API and Providers
 
-- [ ] Direct Python `/v1/**` and state routes reject missing or incorrect internal
+- [x] Direct Python `/v1/**` and state routes reject missing or incorrect internal
       keys.
-- [ ] Public health responses contain no provider readiness details.
-- [ ] An authenticated BFF request is scoped to the verified user UUID.
-- [ ] The founder can run the existing Modal workflow with Vault credentials.
+- [x] Public health responses contain no provider readiness details.
+- [x] An authenticated BFF request is scoped to the verified user UUID.
+- [x] The founder can run the existing Modal workflow with Vault credentials.
 - [ ] A new user's Modal token can access the configured app and environment.
 - [ ] Baseten serving uses the saved user key and rejects a non-Baseten endpoint.
-- [ ] Missing or invalid provider configuration fails without falling back to
+- [x] Missing provider configuration fails without falling back to
       founder credentials.
 
 ### Persistence and Deployment
 
-- [ ] All four feature migrations appear in the hosted migration history.
-- [ ] The founder profile, credential references, and state object exist.
-- [ ] A new user's state object uses only that Auth UUID in its path.
-- [ ] User state survives API restart, spin-down, and redeploy.
-- [ ] `forge-web` has the API's generated internal key through `fromService`.
-- [ ] `NEXT_PUBLIC_API_BASE_URL` is empty in production.
-- [ ] The Next.js build, Python tests, Render Blueprint validation, and manual
+- [x] All four feature migrations appear in the hosted migration history.
+- [x] The founder profile, credential references, and state object exist.
+- [x] A new user's state object uses only that Auth UUID in its path.
+- [x] User state survives API restart, spin-down, and redeploy.
+- [x] `forge-web` has the API's generated internal key through `fromService`.
+- [x] `NEXT_PUBLIC_API_BASE_URL` is empty in production.
+- [x] The Next.js build, Python tests, Render Blueprint validation, and manual
       OAuth smoke all pass.
 
 ## Known MVP Limitations
 
+- The legacy `forge-tinkering-mvp.onrender.com` service still exposes the old
+  unauthenticated mock product surface. It does not currently expose provider
+  secrets, but it should be retired or redirected after explicit service-owner
+  approval so users cannot mistake it for the authenticated Forge app.
+- Google currently displays the Supabase project hostname during consent. Add
+  a Supabase custom Auth domain and update the Google callback before a polished
+  branded launch.
 - Render's free services spin down and have cold starts. Their filesystems are
   ephemeral; authenticated state durability depends on Supabase Storage.
 - Per-user control-plane state is one JSON object. Read-modify-write operations
