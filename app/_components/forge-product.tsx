@@ -43,6 +43,7 @@ import type {
   TrainingRun,
   VerifierScore
 } from "@/lib/types";
+import { AnvilLogo } from "@/app/_components/anvil-logo";
 
 type ApiState = ForgeState & { providers: ProviderHealth };
 type IconComponent = typeof Activity;
@@ -192,7 +193,7 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
       <aside className="primary-rail">
         <div className="brand-row">
           <Link href="/runs" className="brand-symbol" aria-label="Forge train">
-            F
+            <AnvilLogo />
           </Link>
           <div className="brand-copy">
             <strong>Forge</strong>
@@ -1454,7 +1455,9 @@ function EmptyTable({
 function LoadingState() {
   return (
     <div className="loading-state">
-      <div className="loading-mark">F</div>
+      <div className="loading-mark" aria-hidden="true">
+        <AnvilLogo />
+      </div>
       <div>
         <strong>Loading Forge</strong>
         <span>Connecting to the control plane…</span>
