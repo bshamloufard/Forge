@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
   Activity,
   Archive,
   ArrowUpRight,
   BrainCircuit,
   CheckCircle2,
+  ChevronDown,
   Cloud,
   Cpu,
   Database,
@@ -26,6 +26,7 @@ import {
   TerminalSquare,
   Zap
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { models, recipes } from "@/lib/recipes";
 import type {
@@ -80,6 +81,14 @@ type Metric = {
   tone: "green" | "blue" | "violet" | "amber";
 };
 
+type DropdownOption<T extends string> = {
+  value: T;
+  label: string;
+  detail: string;
+  logoFallback: string;
+  logoSrc?: string;
+};
+
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 const apiPath = (path: string) => `${apiBase}${path}`;
 
@@ -108,6 +117,41 @@ const pipeline = [
   ["State", Archive],
   ["Serve", Cloud]
 ] as const;
+
+const modelMetadata: Record<string, Omit<DropdownOption<string>, "value" | "label">> = {
+  "sshleifer/tiny-gpt2": {
+    detail: "Hugging Face tiny GPT-2 smoke model",
+    logoFallback: "HF",
+    logoSrc: "https://cdn.simpleicons.org/huggingface/FFD21E"
+  },
+  "Qwen/Qwen2.5-0.5B-Instruct": {
+    detail: "Qwen small instruct model",
+    logoFallback: "Q",
+    logoSrc: "https://cdn.simpleicons.org/alibabacloud/FF6A00"
+  },
+  "gpt-oss-20b": {
+    detail: "OpenAI open-weight model",
+    logoFallback: "OA",
+    logoSrc: "https://cdn.simpleicons.org/openai/111827"
+  },
+  "deepseek-v3.1": {
+    detail: "DeepSeek reasoning model",
+    logoFallback: "DS",
+    logoSrc: "https://cdn.simpleicons.org/deepseek/4D6BFF"
+  },
+  "kimi-k2.6": {
+    detail: "Moonshot AI Kimi model",
+    logoFallback: "K",
+    logoSrc: "https://cdn.simpleicons.org/moonrepo/6B5CFF"
+  }
+};
+
+const recipeMetadata: Record<RecipeId, Omit<DropdownOption<RecipeId>, "value" | "label">> = {
+  "chat-sft": { detail: "Supervised instruction tuning", logoFallback: "SFT" },
+  "math-rl": { detail: "Verifier-scored math rollouts", logoFallback: "M" },
+  "tool-rl": { detail: "Tool trajectory optimization", logoFallback: "T" },
+  "harbor-agent-rl": { detail: "Sandboxed agent tasks", logoFallback: "H" }
+};
 
 const ForgeContext = createContext<ForgeContextValue | null>(null);
 
@@ -260,10 +304,16 @@ function ForgeProvider({ children }: { children: React.ReactNode }) {
 
 function ShellChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const forge = useForge();
   const meta = pageMeta[pathname] ?? pageMeta["/"];
   const org = forge.state?.project.organization ?? "Forge";
   const projectName = forge.state?.project.name ?? "Loading project";
+
+  async function createSessionAndOpenRuns() {
+    await forge.mutate("new-session", "/api/sessions", forge.sessionForm);
+    router.push("/runs");
+  }
 
   return (
     <div className="app-shell">
@@ -325,11 +375,11 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
             </button>
             <button
               className="button primary"
-              onClick={() => forge.mutate("new-session", "/api/sessions", forge.sessionForm)}
+              onClick={createSessionAndOpenRuns}
               disabled={forge.busy !== null}
             >
               <Play size={16} />
-              New session
+              {forge.busy === "new-session" ? "Creating..." : "New session"}
             </button>
           </div>
         </header>
@@ -576,6 +626,25 @@ export function DeploymentsPage() {
 function SessionFormPanel() {
   const forge = useReadyForge();
   const { sessionForm } = forge;
+  const router = useRouter();
+  const modelOptions: Array<DropdownOption<string>> = models.map((model) => ({
+    value: model,
+    label: model,
+    ...(modelMetadata[model] ?? {
+      detail: "Model endpoint",
+      logoFallback: model.slice(0, 2).toUpperCase()
+    })
+  }));
+  const recipeOptions: Array<DropdownOption<RecipeId>> = Object.entries(recipes).map(([id, recipe]) => ({
+    value: id as RecipeId,
+    label: recipe.name,
+    ...recipeMetadata[id as RecipeId]
+  }));
+
+  async function startSession() {
+    await forge.mutate("new-session", "/api/sessions", sessionForm);
+    router.push("/runs");
+  }
 
   return (
     <div className="session-form">
@@ -586,37 +655,18 @@ function SessionFormPanel() {
           onChange={(event) => forge.setSessionForm({ ...sessionForm, name: event.target.value })}
         />
       </label>
-      <label>
-        Model
-        <select
-          value={sessionForm.model}
-          onChange={(event) => forge.setSessionForm({ ...sessionForm, model: event.target.value })}
-        >
-          {models.map((model) => (
-            <option value={model} key={model}>
-              {model}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Recipe
-        <select
-          value={sessionForm.recipe}
-          onChange={(event) =>
-            forge.setSessionForm({
-              ...sessionForm,
-              recipe: event.target.value as RecipeId
-            })
-          }
-        >
-          {Object.entries(recipes).map(([id, recipe]) => (
-            <option value={id} key={id}>
-              {recipe.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <LogoDropdown
+        label="Model"
+        value={sessionForm.model}
+        options={modelOptions}
+        onChange={(model) => forge.setSessionForm({ ...sessionForm, model })}
+      />
+      <LogoDropdown
+        label="Recipe"
+        value={sessionForm.recipe}
+        options={recipeOptions}
+        onChange={(recipe) => forge.setSessionForm({ ...sessionForm, recipe })}
+      />
       <label>
         Target steps
         <input
@@ -634,13 +684,91 @@ function SessionFormPanel() {
       </label>
       <button
         className="button primary full-width"
-        onClick={() => forge.mutate("new-session", "/api/sessions", sessionForm)}
+        onClick={startSession}
         disabled={forge.busy !== null}
       >
         <Play size={16} />
-        Start session
+        {forge.busy === "new-session" ? "Creating..." : "Start session"}
       </button>
     </div>
+  );
+}
+
+function LogoDropdown<T extends string>({
+  label,
+  value,
+  options,
+  onChange
+}: {
+  label: string;
+  value: T;
+  options: Array<DropdownOption<T>>;
+  onChange: (value: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  return (
+    <div
+      className="logo-dropdown-field"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      <span className="field-label">{label}</span>
+      <button
+        type="button"
+        className="logo-dropdown-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <OptionLogo option={selected} />
+        <span className="dropdown-selected-copy">
+          <strong>{selected.label}</strong>
+          <span>{selected.detail}</span>
+        </span>
+        <ChevronDown size={16} />
+      </button>
+      {open ? (
+        <div className="logo-dropdown-menu" role="listbox" aria-label={label}>
+          {options.map((option) => (
+            <button
+              type="button"
+              className={`logo-dropdown-option ${option.value === value ? "selected" : ""}`}
+              key={option.value}
+              role="option"
+              aria-selected={option.value === value}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              <OptionLogo option={option} />
+              <span>
+                <strong>{option.label}</strong>
+                <small>{option.detail}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OptionLogo<T extends string>({ option }: { option: DropdownOption<T> }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  return (
+    <span className="option-logo" aria-hidden="true">
+      {option.logoSrc && !imageFailed ? (
+        <img src={option.logoSrc} alt="" onError={() => setImageFailed(true)} />
+      ) : (
+        <span>{option.logoFallback}</span>
+      )}
+    </span>
   );
 }
 
