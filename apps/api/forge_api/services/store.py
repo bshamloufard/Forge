@@ -26,6 +26,22 @@ def now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _storage_object_is_missing(response: httpx.Response) -> bool:
+    if response.status_code == 404:
+        return True
+    if response.status_code != 400:
+        return False
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    return (
+        isinstance(payload, dict)
+        and str(payload.get("statusCode")) == "404"
+        and payload.get("error") == "not_found"
+    )
+
+
 class StateRepository:
     def __init__(self, settings: Settings, identity: RequestIdentity | None = None):
         self.settings = settings
@@ -85,7 +101,7 @@ class StateRepository:
     def _read_from_supabase(self) -> ForgeState:
         url, headers = self._storage_request(download=True)
         response = httpx.get(url, headers=headers, timeout=20)
-        if response.status_code == 404:
+        if _storage_object_is_missing(response):
             state = self.initial_state()
             self._write_to_supabase(state)
             return state
