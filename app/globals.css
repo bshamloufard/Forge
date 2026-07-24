@@ -353,8 +353,10 @@ code {
   right: 0;
   display: grid;
   gap: 4px;
-  max-height: 280px;
-  overflow: auto;
+  max-height: 210px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 5px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -639,7 +641,7 @@ code {
 }
 
 .panel {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .panel-header {
@@ -659,6 +661,7 @@ code {
 
 .panel-body {
   padding: 14px;
+  overflow: visible;
 }
 
 .pipeline-strip {
