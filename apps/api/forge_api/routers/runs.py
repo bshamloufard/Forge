@@ -26,6 +26,8 @@ def forward_backward(
         return _dump(repository.forward_backward(target_run_id, body.microbatches))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Modal training job failed: {exc}") from exc
 
 
 @router.post("/v1/training-runs/{run_id}/optim-step")

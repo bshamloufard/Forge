@@ -133,10 +133,10 @@ function ForgeProvider({ children }: { children: React.ReactNode }) {
     "Reward correct answer, evidence, checkpoint lineage, tests, and clear deployment readiness."
   );
   const [sessionForm, setSessionForm] = useState<SessionForm>({
-    name: "math verifier run",
-    model: "qwen3-8b",
-    recipe: "math-rl",
-    targetSteps: 96
+    name: "tiny hf modal run",
+    model: "sshleifer/tiny-gpt2",
+    recipe: "chat-sft",
+    targetSteps: 2
   });
 
   async function refresh() {
@@ -227,7 +227,7 @@ function ForgeProvider({ children }: { children: React.ReactNode }) {
       {
         label: "Spend",
         value: `$${spend.toFixed(2)}`,
-        hint: "mock cost ledger",
+        hint: "provider estimate",
         icon: Gauge,
         tone: "amber"
       }
@@ -320,8 +320,8 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
               className="icon-button"
               onClick={forge.resetState}
               disabled={forge.busy !== null}
-              title="Reset demo state"
-              aria-label="Reset demo state"
+              title="Reset workspace state"
+              aria-label="Reset workspace state"
             >
               <RotateCcw size={17} />
             </button>
@@ -734,10 +734,11 @@ function Panel({
 }
 
 function ProviderBadge({ name, mode }: { name: string; mode: "mock" | "configured" }) {
+  const label = mode === "configured" ? "configured" : "missing";
   return (
     <span className={`provider-badge ${mode === "configured" ? "configured" : ""}`}>
       <Database size={14} />
-      {name} {mode}
+      {name} {label}
     </span>
   );
 }

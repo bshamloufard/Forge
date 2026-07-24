@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from forge_api.dependencies import get_repository
 from forge_api.models.requests import CreateDeploymentRequest, DeploymentInvokeRequest
+from forge_api.providers.baseten_client import chat_completion
+from forge_api.providers.health import get_provider_health
 from forge_api.services.store import StateRepository
 
 router = APIRouter(tags=["deployments"])
@@ -38,6 +40,12 @@ def invoke_deployment(
     if prompt is None and body.messages:
         prompt = "\n".join(f"{message.role}: {message.content}" for message in body.messages)
     prompt = prompt or "Hello"
+    if deployment.target == "baseten" and get_provider_health(repository.settings).baseten == "configured":
+        try:
+            return chat_completion(repository.settings, prompt=prompt, messages=body.messages)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Baseten invoke failed: {exc}") from exc
+
     return {
         "id": f"chatcmpl-{deployment.id}",
         "object": "chat.completion",
@@ -47,7 +55,7 @@ def invoke_deployment(
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": f"Mock deployed adapter response for: {prompt}"},
+                "message": {"role": "assistant", "content": f"Local deployment fallback response for: {prompt}"},
                 "finish_reason": "stop",
             }
         ],
@@ -56,4 +64,3 @@ def invoke_deployment(
 
 def _dump(result: dict[str, object]) -> dict[str, object]:
     return {key: value.model_dump() if hasattr(value, "model_dump") else value for key, value in result.items()}
-

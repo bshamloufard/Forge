@@ -8,12 +8,12 @@ from forge import ServiceClient  # noqa: E402
 
 
 def main() -> None:
-    service = ServiceClient(base_url="http://localhost:8000")
+    service = ServiceClient(base_url="http://localhost:8000", timeout=240)
     training = service.create_training_client(
-        model="qwen3-8b",
+        model="sshleifer/tiny-gpt2",
         recipe="chat-sft",
-        name="python smoke run",
-        target_steps=12,
+        name="tiny hf modal smoke run",
+        target_steps=2,
     )
     training.forward_backward(microbatches=2)
     training.optim_step()
@@ -41,4 +41,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

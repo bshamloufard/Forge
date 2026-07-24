@@ -21,9 +21,9 @@ export function getProviderHealth(): ProviderHealth {
 export function providerNote(provider: keyof ProviderHealth) {
   const health = getProviderHealth();
   if (health[provider] === "configured") {
-    return `${provider} keys detected; provider adapter is ready to replace mock execution.`;
+    return `${provider} keys detected; provider adapter is configured.`;
   }
-  return `${provider} keys missing; using deterministic mock execution for the MVP.`;
+  return `${provider} keys missing; local fallback execution is available for development.`;
 }
 
 export async function createServingEndpoint(name: string, target: "baseten" | "modal") {

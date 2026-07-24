@@ -16,7 +16,7 @@ Forge deploys as two Render web services:
 - Build command: `pip install -e apps/api -e packages/forge`
 - Start command: `cd apps/api && uvicorn forge_api.main:app --host 0.0.0.0 --port $PORT`
 - Health check: `GET /health`
-- State: local Render disk for the current mock repository, then Supabase
+- State: local Render disk for transitional state, with Supabase schema and storage provisioned
 
 `forge-web`:
 

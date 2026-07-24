@@ -37,13 +37,20 @@ services:
         sync: false
       - key: BASETEN_BASE_URL
         value: https://inference.baseten.co/v1
+      - key: BASETEN_MODEL_ID
+        value: zai-org/GLM-5.2-Fast
+      - key: BASETEN_DEFAULT_MODEL
+        value: zai-org/GLM-5.2-Fast
+      - key: FORGE_TRAINING_MODEL_ID
+        value: sshleifer/tiny-gpt2
+      - key: FORGE_TRAINING_DATASET_ID
+        value: Abirate/english_quotes
+      - key: FORGE_TRAINING_DATASET_SPLIT
+        value: train[:8]
+      - key: FORGE_TRAINING_MAX_STEPS
+        value: "2"
       - key: INTERNAL_API_KEY
         generateValue: true
-    disk:
-      name: forge-api-state
-      mountPath: /var/data/forge
-      sizeGB: 1
-
   - type: web
     name: forge-web
     runtime: node

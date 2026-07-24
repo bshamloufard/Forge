@@ -8,6 +8,7 @@ from forge_api.settings import get_settings
 
 def test_training_checkpoint_sampling_verifier_deployment_flow(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "state.json"))
+    _disable_provider_env(monkeypatch)
     get_settings.cache_clear()
 
     client = TestClient(app)
@@ -18,7 +19,7 @@ def test_training_checkpoint_sampling_verifier_deployment_flow(tmp_path: Path, m
 
     created = client.post(
         "/v1/sessions",
-        json={"name": "pytest run", "model": "qwen3-8b", "recipe": "chat-sft", "targetSteps": 8},
+        json={"name": "pytest run", "model": "sshleifer/tiny-gpt2", "recipe": "chat-sft", "targetSteps": 8},
     )
     assert created.status_code == 200
     run_id = created.json()["run"]["id"]
@@ -57,6 +58,7 @@ def test_training_checkpoint_sampling_verifier_deployment_flow(tmp_path: Path, m
 
 def test_legacy_dashboard_state_route(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "legacy-state.json"))
+    _disable_provider_env(monkeypatch)
     get_settings.cache_clear()
 
     client = TestClient(app)
@@ -64,3 +66,14 @@ def test_legacy_dashboard_state_route(tmp_path: Path, monkeypatch):
     assert state.status_code == 200
     assert state.json()["providers"]["modal"] in {"mock", "configured"}
 
+
+def _disable_provider_env(monkeypatch):
+    for key in [
+        "MODAL_TOKEN_ID",
+        "MODAL_TOKEN_SECRET",
+        "BASETEN_API_KEY",
+        "SUPABASE_URL",
+        "SUPABASE_SECRET_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+    ]:
+        monkeypatch.setenv(key, "")

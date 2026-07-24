@@ -21,9 +21,6 @@ const now = () => new Date().toISOString();
 
 function initialState(): ForgeState {
   const createdAt = now();
-  const sessionId = createId("ses");
-  const runId = createId("run");
-  const checkpointId = createId("ckpt");
 
   return {
     project: {
@@ -32,68 +29,11 @@ function initialState(): ForgeState {
       organization: "Default Org",
       createdAt
     },
-    sessions: [
-      {
-        id: sessionId,
-        projectId: "proj_default",
-        name: "qwen3 chat-sft baseline",
-        creator: "researcher@forge.local",
-        model: "qwen3-8b",
-        recipe: "chat-sft",
-        provider: "modal",
-        createdAt,
-        updatedAt: createdAt
-      }
-    ],
-    runs: [
-      {
-        id: runId,
-        sessionId,
-        name: "baseline-lora",
-        status: "running",
-        step: 42,
-        targetSteps: 120,
-        loss: 1.62,
-        reward: 0.48,
-        verifierScore: 0.57,
-        tokens: 184000,
-        costUsd: 7.84,
-        logs: [
-          "session opened on modal adapter",
-          "sampled 16 prompts from chat-sft seed set",
-          "forward_backward accumulated 4 microbatches",
-          "optim_step applied LoRA rank=16 update"
-        ],
-        createdAt,
-        updatedAt: createdAt
-      }
-    ],
-    checkpoints: [
-      {
-        id: checkpointId,
-        sessionId,
-        runId,
-        name: "baseline-step-040",
-        step: 40,
-        adapterType: "lora",
-        artifactUri: "supabase://mock-artifacts/checkpoints/baseline-step-040.safetensors",
-        score: 0.55,
-        createdAt
-      }
-    ],
+    sessions: [],
+    runs: [],
+    checkpoints: [],
     deployments: [],
-    verifierScores: [
-      {
-        id: createId("ver"),
-        candidate:
-          "The model uses explicit checkpoints so each experiment can be resumed, exported, evaluated, and deployed without losing lineage.",
-        rubric: "Clear explanation with checkpoint, resume, export, evaluation, and deployment coverage.",
-        score: 0.82,
-        confidence: 0.76,
-        rationale: "Seed verifier example for the dashboard.",
-        createdAt
-      }
-    ]
+    verifierScores: []
   };
 }
 
@@ -176,7 +116,7 @@ export async function forwardBackward(runId: string, microbatches = 4) {
   run.verifierScore = Number(Math.min(0.98, run.verifierScore + 0.01 * microbatches).toFixed(3));
   run.costUsd = Number((run.costUsd + microbatches * 0.18).toFixed(2));
   run.updatedAt = now();
-  run.logs.unshift(`forward_backward accumulated ${microbatches} microbatches at step ${run.step}`);
+  run.logs.unshift(`local forward_backward accumulated ${microbatches} microbatches at step ${run.step}`);
   if (run.step >= run.targetSteps) run.status = "completed";
   await writeState(state);
   return { state, run };
@@ -192,7 +132,7 @@ export async function optimStep(runId: string) {
   run.verifierScore = Number(Math.min(0.99, run.verifierScore + 0.018).toFixed(3));
   run.costUsd = Number((run.costUsd + 0.42).toFixed(2));
   run.updatedAt = now();
-  run.logs.unshift("optim_step applied LoRA adapter update and refreshed sampler weights");
+  run.logs.unshift("optim_step recorded optimizer application for latest training artifact");
   await writeState(state);
   return { state, run };
 }
@@ -208,7 +148,7 @@ export async function saveCheckpoint(runId: string, name?: string) {
     name: name || `${run.name}-step-${String(run.step).padStart(3, "0")}`,
     step: run.step,
     adapterType: "lora",
-    artifactUri: `supabase://mock-artifacts/checkpoints/${run.id}/step-${run.step}.safetensors`,
+    artifactUri: `modal-volume://forge-checkpoints/${run.id}`,
     score: run.verifierScore,
     createdAt: now()
   };

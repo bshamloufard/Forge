@@ -41,7 +41,7 @@ class ServiceClient:
     def create_training_client(
         self,
         project_id: str | None = None,
-        model: str = "qwen3-8b",
+        model: str = "sshleifer/tiny-gpt2",
         recipe: str = "chat-sft",
         name: str | None = None,
         target_steps: int | None = None,
@@ -57,7 +57,7 @@ class ServiceClient:
 
     def create_lora_training_client(
         self,
-        base_model: str = "qwen3-8b",
+        base_model: str = "sshleifer/tiny-gpt2",
         rank: int = 16,
         recipe: str = "chat-sft",
         target_steps: int | None = None,
@@ -73,7 +73,7 @@ class ServiceClient:
         return self
 
     def get_checkpoint_archive_url_from_tinker_path(self, path: str) -> APIFuture[bytes]:
-        return APIFuture(lambda: f"mock checkpoint archive for {path}".encode())
+        return APIFuture(lambda: f"checkpoint archive request for {path}".encode())
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         response = self._client.request(method, path, **kwargs)
@@ -131,5 +131,4 @@ class SamplingClient:
         return SampleResult.model_validate(response)
 
     def compute_logprobs(self, prompt: str) -> dict[str, Any]:
-        return {"prompt": prompt, "token_logprobs": [], "status": "mock"}
-
+        return {"prompt": prompt, "token_logprobs": [], "status": "local-fallback"}

@@ -6,5 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
   "modal>=1.0",
   "pydantic>=2.10",
+  "datasets>=3.0",
+  "torch>=2.5",
+  "transformers>=4.48",
 ]
-

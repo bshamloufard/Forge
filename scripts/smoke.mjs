@@ -24,8 +24,17 @@ async function request(path, options = {}) {
 }
 
 const state = await request("/api/state");
-const run = state.runs[0];
-const session = state.sessions[0];
+const created = await request("/api/v1/sessions", {
+  method: "POST",
+  body: JSON.stringify({
+    name: "tiny hf modal smoke run",
+    model: "sshleifer/tiny-gpt2",
+    recipe: "chat-sft",
+    targetSteps: 2
+  })
+});
+const run = created.run;
+const session = created.session;
 
 await request(`/api/v1/training-runs/${run.id}/forward-backward`, {
   method: "POST",

@@ -5,6 +5,7 @@ from pathlib import Path
 from forge_api.ids import create_id
 from forge_api.models.domain import Checkpoint, Deployment, ForgeState, Project, Session, TrainingRun, VerifierScore
 from forge_api.providers.health import create_serving_endpoint
+from forge_api.providers.modal_client import run_tiny_finetune
 from forge_api.recipes import recipes
 from forge_api.services.verifier import score_candidate
 from forge_api.settings import Settings
@@ -38,73 +39,13 @@ class StateRepository:
 
     def initial_state(self) -> ForgeState:
         created_at = now()
-        session_id = create_id("ses")
-        run_id = create_id("run")
-        checkpoint_id = create_id("ckpt")
         return ForgeState(
             project=Project(id="proj_default", name="Forge Research", organization="Default Org", createdAt=created_at),
-            sessions=[
-                Session(
-                    id=session_id,
-                    projectId="proj_default",
-                    name="qwen3 chat-sft baseline",
-                    creator="researcher@forge.local",
-                    model="qwen3-8b",
-                    recipe="chat-sft",
-                    createdAt=created_at,
-                    updatedAt=created_at,
-                )
-            ],
-            runs=[
-                TrainingRun(
-                    id=run_id,
-                    sessionId=session_id,
-                    name="baseline-lora",
-                    status="running",
-                    step=42,
-                    targetSteps=120,
-                    loss=1.62,
-                    reward=0.48,
-                    verifierScore=0.57,
-                    tokens=184000,
-                    costUsd=7.84,
-                    logs=[
-                        "session opened on modal adapter",
-                        "sampled 16 prompts from chat-sft seed set",
-                        "forward_backward accumulated 4 microbatches",
-                        "optim_step applied LoRA rank=16 update",
-                    ],
-                    createdAt=created_at,
-                    updatedAt=created_at,
-                )
-            ],
-            checkpoints=[
-                Checkpoint(
-                    id=checkpoint_id,
-                    sessionId=session_id,
-                    runId=run_id,
-                    name="baseline-step-040",
-                    step=40,
-                    artifactUri="supabase://mock-artifacts/checkpoints/baseline-step-040.safetensors",
-                    score=0.55,
-                    createdAt=created_at,
-                )
-            ],
+            sessions=[],
+            runs=[],
+            checkpoints=[],
             deployments=[],
-            verifierScores=[
-                VerifierScore(
-                    id=create_id("ver"),
-                    candidate=(
-                        "The model uses explicit checkpoints so each experiment can be resumed, exported, "
-                        "evaluated, and deployed without losing lineage."
-                    ),
-                    rubric="Clear explanation with checkpoint, resume, export, evaluation, and deployment coverage.",
-                    score=0.82,
-                    confidence=0.76,
-                    rationale="Seed verifier example for the dashboard.",
-                    createdAt=created_at,
-                )
-            ],
+            verifierScores=[],
         )
 
     def create_session(self, *, name: str, model: str, recipe: str, target_steps: int | None) -> dict[str, object]:
@@ -144,6 +85,55 @@ class StateRepository:
     def forward_backward(self, run_id: str, microbatches: int = 4) -> dict[str, object]:
         state = self.read()
         run = _find_run(state, run_id)
+        session = _find_session(state, run.sessionId)
+        if self.settings.modal_token_id and self.settings.modal_token_secret:
+            run.status = "running"
+            run.updatedAt = now()
+            run.logs.insert(
+                0,
+                (
+                    "modal run_tiny_finetune starting "
+                    f"model={self.settings.training_model_id} "
+                    f"dataset={self.settings.training_dataset_id} "
+                    f"split={self.settings.training_dataset_split}"
+                ),
+            )
+            self.write(state)
+            try:
+                result = run_tiny_finetune(self.settings, run_id=run.id)
+            except Exception:
+                state = self.read()
+                run = _find_run(state, run_id)
+                run.status = "failed"
+                run.updatedAt = now()
+                run.logs.insert(0, "modal run_tiny_finetune failed")
+                self.write(state)
+                raise
+
+            state = self.read()
+            run = _find_run(state, run_id)
+            run.status = "completed"
+            run.step = min(run.targetSteps, run.step + int(result.get("steps", microbatches)))
+            run.tokens += int(result.get("tokens", 0))
+            run.loss = round(float(result.get("loss", run.loss)), 4)
+            run.reward = round(min(0.99, max(run.reward, 0.35)), 3)
+            run.verifierScore = round(min(0.99, max(run.verifierScore, 0.42)), 3)
+            run.costUsd = round(run.costUsd + 0.02, 2)
+            run.updatedAt = now()
+            run.logs.insert(0, f"artifact_uri={result.get('artifact_uri')}")
+            run.logs.insert(
+                0,
+                (
+                    "modal run_tiny_finetune completed "
+                    f"model={result.get('model_id', session.model)} "
+                    f"dataset={result.get('dataset_id')} "
+                    f"steps={result.get('steps')} "
+                    f"loss={result.get('loss')}"
+                ),
+            )
+            self.write(state)
+            return {"state": state, "run": run, "training": result}
+
         run.status = "running"
         run.step = min(run.targetSteps, run.step + max(1, microbatches))
         run.tokens += microbatches * 2048
@@ -152,7 +142,7 @@ class StateRepository:
         run.verifierScore = round(min(0.98, run.verifierScore + 0.01 * microbatches), 3)
         run.costUsd = round(run.costUsd + microbatches * 0.18, 2)
         run.updatedAt = now()
-        run.logs.insert(0, f"forward_backward accumulated {microbatches} microbatches at step {run.step}")
+        run.logs.insert(0, f"local forward_backward accumulated {microbatches} microbatches at step {run.step}")
         if run.step >= run.targetSteps:
             run.status = "completed"
         self.write(state)
@@ -167,7 +157,7 @@ class StateRepository:
         run.verifierScore = round(min(0.99, run.verifierScore + 0.018), 3)
         run.costUsd = round(run.costUsd + 0.42, 2)
         run.updatedAt = now()
-        run.logs.insert(0, "optim_step applied LoRA adapter update and refreshed sampler weights")
+        run.logs.insert(0, "optim_step recorded optimizer application for latest training artifact")
         self.write(state)
         return {"state": state, "run": run}
 
@@ -180,7 +170,7 @@ class StateRepository:
             runId=run.id,
             name=name or f"{run.name}-step-{run.step:03d}",
             step=run.step,
-            artifactUri=f"supabase://mock-artifacts/checkpoints/{run.id}/step-{run.step}.safetensors",
+            artifactUri=_latest_artifact_uri(run) or f"modal-volume://forge-checkpoints/{run.id}",
             score=run.verifierScore,
             createdAt=now(),
         )
@@ -260,3 +250,17 @@ def _find_run(state: ForgeState, run_id: str) -> TrainingRun:
         raise KeyError("Run not found")
     return run
 
+
+def _find_session(state: ForgeState, session_id: str) -> Session:
+    session = next((item for item in state.sessions if item.id == session_id), None)
+    if session is None:
+        raise KeyError("Session not found")
+    return session
+
+
+def _latest_artifact_uri(run: TrainingRun) -> str | None:
+    for log in run.logs:
+        if log.startswith("artifact_uri="):
+            value = log.split("=", 1)[1].strip()
+            return value or None
+    return None

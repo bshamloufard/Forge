@@ -50,7 +50,7 @@ Tinker-like client surface:
 from forge import ServiceClient
 
 service = ServiceClient(base_url="http://localhost:8000")
-training = service.create_training_client(model="qwen3-8b", recipe="chat-sft")
+training = service.create_training_client(model="sshleifer/tiny-gpt2", recipe="chat-sft")
 training.forward_backward(microbatches=2)
 training.optim_step()
 checkpoint = training.save_state(name="local-step")

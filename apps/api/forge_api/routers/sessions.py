@@ -20,7 +20,7 @@ def create_session(
 ) -> dict[str, object]:
     result = repository.create_session(
         name=body.name or f"{body.recipe} session",
-        model=body.model or body.baseModel or "qwen3-8b",
+        model=body.model or body.baseModel or repository.settings.training_model_id,
         recipe=body.recipe,
         target_steps=body.targetSteps,
     )
@@ -29,4 +29,3 @@ def create_session(
 
 def _dump(result: dict[str, object]) -> dict[str, object]:
     return {key: value.model_dump() if hasattr(value, "model_dump") else value for key, value in result.items()}
-

@@ -23,6 +23,13 @@ class Settings(BaseSettings):
 
     baseten_api_key: str | None = Field(default=None, alias="BASETEN_API_KEY")
     baseten_base_url: str = Field(default="https://inference.baseten.co/v1", alias="BASETEN_BASE_URL")
+    baseten_model_id: str = Field(default="zai-org/GLM-5.2-Fast", alias="BASETEN_MODEL_ID")
+    baseten_default_model: str | None = Field(default=None, alias="BASETEN_DEFAULT_MODEL")
+
+    training_model_id: str = Field(default="sshleifer/tiny-gpt2", alias="FORGE_TRAINING_MODEL_ID")
+    training_dataset_id: str = Field(default="Abirate/english_quotes", alias="FORGE_TRAINING_DATASET_ID")
+    training_dataset_split: str = Field(default="train[:8]", alias="FORGE_TRAINING_DATASET_SPLIT")
+    training_max_steps: int = Field(default=2, alias="FORGE_TRAINING_MAX_STEPS")
 
     @property
     def cors_origins(self) -> list[str]:
@@ -32,4 +39,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

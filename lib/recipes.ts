@@ -36,8 +36,8 @@ export const recipes: Record<
 };
 
 export const models = [
-  "qwen3-8b",
-  "qwen3.6-27b",
+  "sshleifer/tiny-gpt2",
+  "Qwen/Qwen2.5-0.5B-Instruct",
   "gpt-oss-20b",
   "deepseek-v3.1",
   "kimi-k2.6"
