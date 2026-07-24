@@ -394,6 +394,7 @@ label {
   height: 28px;
   display: grid;
   place-items: center;
+  object-fit: cover;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: var(--selected);
