@@ -135,15 +135,17 @@ def deploy_checkpoint_to_baseten(
     if not artifact_dir.exists():
         raise FileNotFoundError(f"Checkpoint artifact not found in Modal volume: {artifact_dir}")
 
-    model_name = _baseten_safe_name(f"forge-{checkpoint_name}-{checkpoint_id}")
-    deployment_name = _baseten_safe_name(f"{model_name}-{uuid.uuid4().hex[:8]}")
+    deployment_suffix = uuid.uuid4().hex[:8]
+    model_name = _baseten_name_with_suffix(f"forge-{checkpoint_name}-{checkpoint_id}", deployment_suffix)
+    deployment_name = _baseten_name_with_suffix(f"{model_name}-deployment", deployment_suffix)
     truss_dir = Path("/tmp") / f"forge-truss-{checkpoint_id}"
     if truss_dir.exists():
         shutil.rmtree(truss_dir)
     (truss_dir / "model").mkdir(parents=True)
-    shutil.copytree(artifact_dir, truss_dir / "model_artifacts")
+    shutil.copytree(artifact_dir, truss_dir / "data" / "model_artifacts")
 
     (truss_dir / "config.yaml").write_text(_truss_config(model_name))
+    (truss_dir / "model" / "__init__.py").write_text("")
     (truss_dir / "model" / "model.py").write_text(_truss_model_py(model_name))
 
     env = os.environ.copy()
@@ -206,7 +208,14 @@ def format_training_text(row: dict[str, Any]) -> str:
 def _baseten_safe_name(value: str) -> str:
     normalized = "".join(ch.lower() if ch.isalnum() else "-" for ch in value)
     parts = [part for part in normalized.split("-") if part]
-    return "-".join(parts)[:63] or "forge-checkpoint"
+    return "-".join(parts)[:63].strip("-") or "forge-checkpoint"
+
+
+def _baseten_name_with_suffix(value: str, suffix: str, max_length: int = 63) -> str:
+    suffix = _baseten_safe_name(suffix)
+    base_length = max(1, max_length - len(suffix) - 1)
+    base = _baseten_safe_name(value)[:base_length].strip("-") or "forge"
+    return f"{base}-{suffix}"
 
 
 def _truss_config(model_name: str) -> str:
@@ -252,11 +261,12 @@ def _truss_model_py(model_name: str) -> str:
 
         class Model:
             def __init__(self, **kwargs):
+                self._data_dir = kwargs["data_dir"]
                 self._model = None
                 self._tokenizer = None
 
             def load(self):
-                artifact_dir = Path(__file__).resolve().parents[1] / "model_artifacts"
+                artifact_dir = Path(self._data_dir) / "model_artifacts"
                 self._tokenizer = AutoTokenizer.from_pretrained(artifact_dir)
                 if self._tokenizer.pad_token is None:
                     self._tokenizer.pad_token = self._tokenizer.eos_token
