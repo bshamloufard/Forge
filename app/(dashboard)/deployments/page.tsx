@@ -1,5 +1,5 @@
-import { DeploymentsPage } from "@/app/_components/forge-app";
+import { DeployPage } from "@/app/_components/forge-product";
 
 export default function Page() {
-  return <DeploymentsPage />;
+  return <DeployPage />;
 }
