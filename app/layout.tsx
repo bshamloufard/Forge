@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import "./product-ui.css";
 
 export const metadata: Metadata = {
-  title: "Forge — Post-training workspace",
+  title: {
+    default: "Forge",
+    template: "%s - Forge"
+  },
   description: "Train, evaluate, and deploy post-trained models from one control plane."
 };
 
