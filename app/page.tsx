@@ -12,7 +12,9 @@ import styles from "./home.module.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Sign in",
+  title: {
+    absolute: "Sign in - Forge"
+  },
   description: "Sign in to your Forge post-training workspace."
 };
 
