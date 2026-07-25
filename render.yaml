@@ -55,6 +55,8 @@ projects:
                 value: forge-worker-20260724.1
               - key: BASETEN_BASE_URL
                 value: https://inference.baseten.co/v1
+              - key: BASETEN_MANAGEMENT_BASE_URL
+                value: https://api.baseten.co/v1
               - key: BASETEN_MODEL_ID
                 value: zai-org/GLM-5.2-Fast
               - key: BASETEN_DEFAULT_MODEL

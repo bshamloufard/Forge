@@ -1,13 +1,45 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 
 from forge_api.models.domain import Deployment
 from forge_api.models.requests import Message
 from forge_api.settings import Settings
+
+
+def activate_deployment(settings: Settings, *, deployment: Deployment) -> dict[str, Any]:
+    model_id, deployment_id = _deployment_ids(deployment)
+    return _management_request(
+        settings,
+        "POST",
+        f"/models/{quote(model_id, safe='')}/deployments/{quote(deployment_id, safe='')}/activate",
+        operation="activation",
+    )
+
+
+def deactivate_deployment(settings: Settings, *, deployment: Deployment) -> dict[str, Any]:
+    model_id, deployment_id = _deployment_ids(deployment)
+    return _management_request(
+        settings,
+        "POST",
+        f"/models/{quote(model_id, safe='')}/deployments/{quote(deployment_id, safe='')}/deactivate",
+        operation="deactivation",
+    )
+
+
+def delete_model(settings: Settings, *, deployment: Deployment) -> dict[str, Any]:
+    if not deployment.providerModelId:
+        raise RuntimeError("Deployment does not have a Baseten model id")
+    return _management_request(
+        settings,
+        "DELETE",
+        f"/models/{quote(deployment.providerModelId, safe='')}",
+        operation="deletion",
+        allow_missing=True,
+    )
 
 
 def chat_completion(settings: Settings, *, prompt: str, messages: list[Message] | None = None) -> dict[str, Any]:
@@ -107,3 +139,44 @@ def _trusted_baseten_url(value: str) -> str:
     if parsed.scheme != "https" or not trusted_host or parsed.username or parsed.password:
         raise RuntimeError("Baseten returned an untrusted deployment endpoint")
     return value
+
+
+def _deployment_ids(deployment: Deployment) -> tuple[str, str]:
+    if not deployment.providerModelId or not deployment.providerDeploymentId:
+        raise RuntimeError("Deployment does not have Baseten provider ids")
+    return deployment.providerModelId, deployment.providerDeploymentId
+
+
+def _management_request(
+    settings: Settings,
+    method: str,
+    path: str,
+    *,
+    operation: str,
+    allow_missing: bool = False,
+) -> dict[str, Any]:
+    if not settings.baseten_api_key:
+        raise RuntimeError("BASETEN_API_KEY is not configured")
+
+    response = httpx.request(
+        method,
+        f"{settings.baseten_management_base_url.rstrip('/')}{path}",
+        headers={"Authorization": f"Bearer {settings.baseten_api_key}"},
+        timeout=30,
+    )
+    if allow_missing and response.status_code in {404, 410}:
+        return {"deleted": True, "alreadyMissing": True}
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"Baseten {operation} failed with status {response.status_code}"
+        ) from exc
+
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    if isinstance(payload, dict) and payload.get("success") is False:
+        raise RuntimeError(f"Baseten {operation} was not accepted")
+    return payload if isinstance(payload, dict) else {"result": payload}

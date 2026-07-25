@@ -85,7 +85,8 @@ Key groups:
 - Modal: `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, `MODAL_ENVIRONMENT`,
   `MODAL_APP_NAME`
 - Baseten: `BASETEN_API_KEY`, `BASETEN_BASE_URL`,
-  `BASETEN_DEPLOYMENT_BASE_URL`, `BASETEN_DEFAULT_MODEL`
+  `BASETEN_MANAGEMENT_BASE_URL`, `BASETEN_DEPLOYMENT_BASE_URL`,
+  `BASETEN_DEFAULT_MODEL`
 - Optional verifier/router providers: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
   `DEFAULT_BASE_MODEL`, `VERIFIER_MODEL`
 
@@ -133,6 +134,7 @@ For the temporary MVP, use Baseten Model APIs:
 
 ```bash
 BASETEN_BASE_URL=https://inference.baseten.co/v1
+BASETEN_MANAGEMENT_BASE_URL=https://api.baseten.co/v1
 BASETEN_API_KEY=...
 ```
 
@@ -141,6 +143,28 @@ When a fine-tuned checkpoint is exported to a dedicated Baseten deployment, set:
 ```bash
 BASETEN_DEPLOYMENT_BASE_URL=https://model-<model-id>.api.baseten.co/environments/production/sync/v1
 ```
+
+## Deployment cost controls
+
+The Deploy page is the control plane for provider-backed serving resources:
+
+- **Pause** calls Baseten's deployment deactivation API. This stops serving
+  compute spend while retaining the model configuration and stored artifacts.
+- **Resume** calls Baseten's deployment activation API.
+- **Delete endpoint** deletes the Baseten model, which also deletes all of that
+  model's Baseten deployments. Forge removes its local deployment record only
+  after the provider confirms deletion (or confirms that it was already gone).
+- **Delete saved model** first deletes every linked Baseten model, then removes
+  the checkpoint directory from the `forge-checkpoints` Modal Volume once no
+  other saved model references it. Forge removes local records only after those
+  provider operations succeed.
+
+Modal functions are serverless and scale to zero when idle; Modal does not
+provide a reversible pause for a deployed App. Persistent Modal Volume data is a
+separate storage resource, so it remains until the saved model is deleted.
+Dedicated Modal serving endpoints are intentionally disabled until Forge can
+create and track a real per-model Modal resource; the previous placeholder URL
+was not a provider deployment.
 
 ## Render Deployment
 

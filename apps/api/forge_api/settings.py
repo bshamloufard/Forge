@@ -35,6 +35,10 @@ class Settings(BaseSettings):
 
     baseten_api_key: str | None = Field(default=None, alias="BASETEN_API_KEY", repr=False)
     baseten_base_url: str = Field(default="https://inference.baseten.co/v1", alias="BASETEN_BASE_URL")
+    baseten_management_base_url: str = Field(
+        default="https://api.baseten.co/v1",
+        alias="BASETEN_MANAGEMENT_BASE_URL",
+    )
     baseten_model_id: str = Field(default="zai-org/GLM-5.2-Fast", alias="BASETEN_MODEL_ID")
     baseten_default_model: str | None = Field(default=None, alias="BASETEN_DEFAULT_MODEL")
     baseten_deployment_wait: bool = Field(default=False, alias="BASETEN_DEPLOYMENT_WAIT")

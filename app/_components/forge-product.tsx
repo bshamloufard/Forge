@@ -1254,13 +1254,12 @@ export function EvaluatePage() {
 
 export function DeployPage() {
   const forge = useReadyForge();
-  const [target, setTarget] = useState<Deployment["target"]>("baseten");
 
   async function deployVersion(checkpoint: Checkpoint) {
     try {
       await forge.mutate("deploy", "/api/v1/deployments", {
         checkpointId: checkpoint.id,
-        target
+        target: "baseten"
       });
     } catch {
       // ForgeProvider surfaces the request error in the shared alert.
@@ -1268,6 +1267,13 @@ export function DeployPage() {
   }
 
   async function stopDeployment(deployment: Deployment) {
+    if (
+      !window.confirm(
+        `Pause ${deployment.providerDeploymentName ?? deployment.id}? This stops Baseten compute spend, but retains the model configuration and stored artifacts so it can be resumed.`
+      )
+    ) {
+      return;
+    }
     try {
       await forge.mutate(
         "stop-deployment",
@@ -1279,10 +1285,22 @@ export function DeployPage() {
     }
   }
 
+  async function startDeployment(deployment: Deployment) {
+    try {
+      await forge.mutate(
+        "start-deployment",
+        `/api/v1/deployments/${deployment.id}/start`,
+        {}
+      );
+    } catch {
+      // ForgeProvider surfaces the request error in the shared alert.
+    }
+  }
+
   async function deleteDeployment(deployment: Deployment) {
     if (
       !window.confirm(
-        `Delete endpoint ${deployment.providerDeploymentName ?? deployment.id}? This cannot be undone.`
+        `Permanently delete ${deployment.providerDeploymentName ?? deployment.id}? Forge will delete the Baseten model and all of its provider deployments before removing it here. The saved Modal checkpoint remains until you delete the saved model. This cannot be undone.`
       )
     ) {
       return;
@@ -1307,7 +1325,7 @@ export function DeployPage() {
       : "";
     if (
       !window.confirm(
-        `Delete saved model ${checkpoint.name}?${consequence} This cannot be undone.`
+        `Delete saved model ${checkpoint.name}?${consequence} Forge will delete linked Baseten models first, then remove the checkpoint files from Modal storage. This cannot be undone.`
       )
     ) {
       return;
@@ -1336,7 +1354,7 @@ export function DeployPage() {
       <PageIntro
         eyebrow="Release"
         title="Deploy saved models"
-        copy="Choose a verified model version, release it to a serving target, and operate the endpoint here."
+        copy="Release a verified model to Baseten, then pause, resume, or permanently delete the provider resource here."
       />
 
       <div className="metric-strip release-metrics">
@@ -1374,25 +1392,36 @@ export function DeployPage() {
         />
       </div>
 
+      <section className="cost-control-note" aria-label="Cost control behavior">
+        <div>
+          <strong>Pause compute</strong>
+          <span>
+            Pausing deactivates the Baseten deployment and stops compute spend.
+            Configuration and stored model data remain.
+          </span>
+        </div>
+        <div>
+          <strong>Delete serving</strong>
+          <span>
+            Deleting removes the Baseten model and every provider deployment
+            before Forge removes its local record.
+          </span>
+        </div>
+        <div>
+          <strong>Delete storage</strong>
+          <span>
+            Delete a saved model below to remove linked serving resources and
+            its persistent checkpoint files from Modal.
+          </span>
+        </div>
+      </section>
+
       <section className="data-frame" aria-labelledby="versions-title">
         <FrameHeader
           eyebrow="Promotion candidates"
           title="Saved model versions"
           id="versions-title"
-          action={
-            <label className="inline-select">
-              <span>Release to</span>
-              <select
-                value={target}
-                onChange={(event) =>
-                  setTarget(event.target.value as Deployment["target"])
-                }
-              >
-                <option value="baseten">Baseten</option>
-                <option value="modal">Modal</option>
-              </select>
-            </label>
-          }
+          meta="Release target · Baseten"
         />
         <VersionTable
           checkpoints={forge.state.checkpoints}
@@ -1415,6 +1444,7 @@ export function DeployPage() {
         <EndpointTable
           deployments={forge.state.deployments}
           busy={forge.busy}
+          onStart={startDeployment}
           onStop={stopDeployment}
           onDelete={deleteDeployment}
         />
@@ -1888,11 +1918,13 @@ function VersionTable({
 function EndpointTable({
   deployments,
   busy,
+  onStart,
   onStop,
   onDelete
 }: {
   deployments: Deployment[];
   busy: string | null;
+  onStart: (deployment: Deployment) => void;
   onStop: (deployment: Deployment) => void;
   onDelete: (deployment: Deployment) => void;
 }) {
@@ -1942,17 +1974,27 @@ function EndpointTable({
             )}
           </span>
           <span className="row-controls" data-label="Controls">
-            {deployment.status !== "stopped" ? (
+            {deployment.status === "paused" || deployment.status === "stopped" ? (
+              <button
+                className="icon-button"
+                onClick={() => onStart(deployment)}
+                disabled={busy !== null}
+                title="Resume endpoint"
+                aria-label={`Resume endpoint ${deployment.id}`}
+              >
+                <Play size={15} />
+              </button>
+            ) : (
               <button
                 className="icon-button"
                 onClick={() => onStop(deployment)}
                 disabled={busy !== null}
-                title="Stop endpoint"
-                aria-label={`Stop endpoint ${deployment.id}`}
+                title="Pause endpoint and stop compute spend"
+                aria-label={`Pause endpoint ${deployment.id}`}
               >
                 <Power size={15} />
               </button>
-            ) : null}
+            )}
             <button
               className="icon-button danger"
               onClick={() => onDelete(deployment)}

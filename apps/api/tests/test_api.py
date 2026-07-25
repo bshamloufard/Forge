@@ -103,6 +103,9 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
     def fake_deactivate(settings, *, deployment):
         return {"model_id": deployment.providerModelId, "deployment_id": deployment.providerDeploymentId}
 
+    def fake_activate(settings, *, deployment):
+        return {"model_id": deployment.providerModelId, "deployment_id": deployment.providerDeploymentId}
+
     def fake_delete_baseten(settings, *, deployment):
         return {"model_id": deployment.providerModelId}
 
@@ -111,6 +114,7 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr("forge_api.services.store.deploy_checkpoint_to_baseten", fake_deploy)
     monkeypatch.setattr("forge_api.services.store.deactivate_baseten_deployment", fake_deactivate)
+    monkeypatch.setattr("forge_api.services.store.activate_baseten_deployment", fake_activate)
     monkeypatch.setattr("forge_api.services.store.delete_baseten_model", fake_delete_baseten)
     monkeypatch.setattr("forge_api.services.store.delete_checkpoint_artifact", fake_delete_artifact)
     monkeypatch.setattr("forge_api.routers.deployments.predict_deployment", fake_predict)
@@ -143,10 +147,20 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
 
     stopped = client.post(f"/v1/deployments/{deployment['id']}/stop", json={})
     assert stopped.status_code == 200
-    assert stopped.json()["deployment"]["status"] == "stopped"
+    assert stopped.json()["deployment"]["status"] == "paused"
 
     reinvoked = client.post(f"/v1/deployments/{deployment['id']}/invoke", json={"prompt": "Hello custom"})
     assert reinvoked.status_code == 409
+
+    started = client.post(f"/v1/deployments/{deployment['id']}/start", json={})
+    assert started.status_code == 200
+    assert started.json()["deployment"]["status"] == "live"
+
+    resumed_invoke = client.post(
+        f"/v1/deployments/{deployment['id']}/invoke",
+        json={"prompt": "Hello resumed"},
+    )
+    assert resumed_invoke.status_code == 200
 
     deleted_deployment = client.post(f"/v1/deployments/{deployment['id']}/delete", json={})
     assert deleted_deployment.status_code == 200
@@ -157,6 +171,159 @@ def test_baseten_deployment_uses_checkpoint_artifact(tmp_path: Path, monkeypatch
     assert deleted_checkpoint.status_code == 200
     assert deleted_checkpoint.json()["checkpoint"]["id"] == checkpoint_id
     assert client.get("/v1/checkpoints").json()["checkpoints"] == []
+
+
+def test_provider_delete_failure_keeps_forge_record(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "delete-failure-state.json"))
+    monkeypatch.setenv("MODAL_TOKEN_ID", "modal-token-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "modal-token-secret")
+    monkeypatch.setenv("BASETEN_API_KEY", "baseten-api-key")
+    get_settings.cache_clear()
+
+    monkeypatch.setattr(
+        "forge_api.services.store.deploy_checkpoint_to_baseten",
+        lambda settings, *, checkpoint: {
+            "model_id": "model-delete-failure",
+            "deployment_id": "deployment-delete-failure",
+            "deployment_status": "active",
+            "predict_url": "https://model-delete-failure.api.baseten.co/predict",
+        },
+    )
+
+    def fail_provider_delete(settings, *, deployment):
+        raise RuntimeError("provider refused deletion")
+
+    monkeypatch.setattr(
+        "forge_api.services.store.delete_baseten_model",
+        fail_provider_delete,
+    )
+
+    client = TestClient(app)
+    created = client.post(
+        "/v1/sessions",
+        json={"name": "delete safety", "model": "tiny", "recipe": "chat-sft"},
+    )
+    checkpoint = client.post(
+        "/v1/checkpoints",
+        json={"runId": created.json()["run"]["id"], "name": "delete-safety"},
+    ).json()["checkpoint"]
+    deployment = client.post(
+        "/v1/deployments",
+        json={"checkpointId": checkpoint["id"], "target": "baseten"},
+    ).json()["deployment"]
+
+    response = client.post(f"/v1/deployments/{deployment['id']}/delete", json={})
+
+    assert response.status_code == 502
+    remaining = client.get("/v1/deployments").json()["deployments"]
+    assert [item["id"] for item in remaining] == [deployment["id"]]
+
+
+def test_configured_deployment_without_provider_ids_is_not_persisted(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "missing-provider-ids.json"))
+    monkeypatch.setenv("MODAL_TOKEN_ID", "modal-token-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "modal-token-secret")
+    monkeypatch.setenv("BASETEN_API_KEY", "baseten-api-key")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "forge_api.services.store.deploy_checkpoint_to_baseten",
+        lambda settings, *, checkpoint: {"deployment_status": "active"},
+    )
+
+    client = TestClient(app)
+    created = client.post(
+        "/v1/sessions",
+        json={"name": "missing ids", "model": "tiny", "recipe": "chat-sft"},
+    )
+    checkpoint = client.post(
+        "/v1/checkpoints",
+        json={"runId": created.json()["run"]["id"], "name": "missing-ids"},
+    ).json()["checkpoint"]
+
+    response = client.post(
+        "/v1/deployments",
+        json={"checkpointId": checkpoint["id"], "target": "baseten"},
+    )
+
+    assert response.status_code == 502
+    assert client.get("/v1/deployments").json()["deployments"] == []
+
+
+def test_modal_serving_target_is_rejected_instead_of_creating_phantom_resource(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "modal-target-state.json"))
+    _disable_provider_env(monkeypatch)
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    created = client.post(
+        "/v1/sessions",
+        json={"name": "modal target", "model": "tiny", "recipe": "chat-sft"},
+    )
+    checkpoint = client.post(
+        "/v1/checkpoints",
+        json={"runId": created.json()["run"]["id"], "name": "modal-target"},
+    ).json()["checkpoint"]
+
+    response = client.post(
+        "/v1/deployments",
+        json={"checkpointId": checkpoint["id"], "target": "modal"},
+    )
+
+    assert response.status_code == 422
+    assert "scale to zero" in response.json()["detail"]
+
+
+def test_modal_checkpoint_artifact_is_deleted_only_after_last_reference(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("FORGE_STATE_PATH", str(tmp_path / "shared-artifact-state.json"))
+    monkeypatch.setenv("MODAL_TOKEN_ID", "modal-token-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "modal-token-secret")
+    monkeypatch.delenv("BASETEN_API_KEY", raising=False)
+    get_settings.cache_clear()
+    deleted_artifacts: list[str] = []
+
+    def fake_delete_artifact(settings, *, artifact_uri):
+        deleted_artifacts.append(artifact_uri)
+        return {"artifact_uri": artifact_uri, "deleted": True}
+
+    monkeypatch.setattr(
+        "forge_api.services.store.delete_checkpoint_artifact",
+        fake_delete_artifact,
+    )
+
+    client = TestClient(app)
+    created = client.post(
+        "/v1/sessions",
+        json={"name": "shared artifact", "model": "tiny", "recipe": "chat-sft"},
+    )
+    run_id = created.json()["run"]["id"]
+    first = client.post(
+        "/v1/checkpoints",
+        json={"runId": run_id, "name": "first-reference"},
+    ).json()["checkpoint"]
+    second = client.post(
+        "/v1/checkpoints",
+        json={"runId": run_id, "name": "second-reference"},
+    ).json()["checkpoint"]
+    assert first["artifactUri"] == second["artifactUri"]
+
+    first_delete = client.post(f"/v1/checkpoints/{first['id']}/delete", json={})
+    assert first_delete.status_code == 200
+    assert first_delete.json()["artifactRetained"] is True
+    assert deleted_artifacts == []
+
+    second_delete = client.post(f"/v1/checkpoints/{second['id']}/delete", json={})
+    assert second_delete.status_code == 200
+    assert second_delete.json()["artifactDeleted"] is True
+    assert deleted_artifacts == [first["artifactUri"]]
 
 
 def test_internal_api_key_blocks_public_provider_operations(tmp_path: Path, monkeypatch):
