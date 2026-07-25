@@ -20,6 +20,15 @@ def create_deployment(
     body: CreateDeploymentRequest,
     repository: StateRepository = Depends(get_repository),
 ) -> dict[str, object]:
+    if body.target == "modal":
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Dedicated Modal serving endpoints are not supported yet. "
+                "Modal training functions scale to zero when idle; delete the saved "
+                "model to remove its persistent Modal checkpoint storage."
+            ),
+        )
     if repository.identity.authenticated:
         health = get_provider_health(repository.settings)
         if body.target == "baseten" and (
@@ -32,12 +41,6 @@ def create_deployment(
                     "before deploying."
                 ),
             )
-        if body.target == "modal" and health.modal != "configured":
-            raise HTTPException(
-                status_code=409,
-                detail="Configure Modal credentials in Account before deploying.",
-            )
-
     try:
         return _dump(repository.deploy_checkpoint(body.checkpointId, body.target))
     except KeyError as exc:
@@ -56,8 +59,8 @@ def invoke_deployment(
     deployment = next((item for item in state.deployments if item.id == deployment_id), None)
     if deployment is None:
         raise HTTPException(status_code=404, detail="Deployment not found")
-    if deployment.status == "stopped":
-        raise HTTPException(status_code=409, detail="Deployment is stopped")
+    if deployment.status in {"paused", "stopped"}:
+        raise HTTPException(status_code=409, detail="Deployment is paused")
     if (
         repository.identity.authenticated
         and getattr(get_provider_health(repository.settings), deployment.target)
@@ -110,6 +113,22 @@ def stop_deployment(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Stop deployment failed: {exc}") from exc
+
+
+@router.post("/v1/deployments/{deployment_id}/start")
+@router.post("/api/deployments/{deployment_id}/start")
+def start_deployment(
+    deployment_id: str,
+    repository: StateRepository = Depends(get_repository),
+) -> dict[str, object]:
+    try:
+        return _dump(repository.start_deployment(deployment_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Start deployment failed: {exc}") from exc
 
 
 @router.delete("/v1/deployments/{deployment_id}")

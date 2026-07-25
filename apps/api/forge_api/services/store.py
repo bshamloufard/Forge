@@ -17,11 +17,14 @@ from forge_api.models.domain import (
     TrainingRun,
     VerifierScore,
 )
+from forge_api.providers.baseten_client import (
+    activate_deployment as activate_baseten_deployment,
+    deactivate_deployment as deactivate_baseten_deployment,
+    delete_model as delete_baseten_model,
+)
 from forge_api.providers.health import create_serving_endpoint
 from forge_api.providers.health import get_provider_health
 from forge_api.providers.modal_client import (
-    deactivate_baseten_deployment,
-    delete_baseten_model,
     delete_checkpoint_artifact,
     deploy_checkpoint_to_baseten,
     run_tiny_finetune,
@@ -499,6 +502,10 @@ class StateRepository:
             and checkpoint.artifactUri.startswith("modal-volume://forge-checkpoints/")
         ):
             provider_result = deploy_checkpoint_to_baseten(self.settings, checkpoint=checkpoint)
+            if not provider_result.get("model_id") or not provider_result.get("deployment_id"):
+                raise RuntimeError(
+                    "Baseten deployment succeeded without returning provider resource ids"
+                )
 
         endpoint = create_serving_endpoint(checkpoint.name, target, self.settings)
         endpoint_url = str(provider_result.get("predict_url") or endpoint["endpointUrl"])
@@ -529,7 +536,22 @@ class StateRepository:
         if deployment.target == "baseten" and deployment.mode == "configured":
             deactivate_baseten_deployment(self.settings, deployment=deployment)
 
-        deployment.status = "stopped"
+        deployment.status = "paused"
+        self.write(state)
+        return {"state": state, "deployment": deployment}
+
+    def start_deployment(self, deployment_id: str) -> dict[str, object]:
+        state = self.read()
+        deployment = next((item for item in state.deployments if item.id == deployment_id), None)
+        if deployment is None:
+            raise KeyError("Deployment not found")
+        if deployment.status not in {"paused", "stopped"}:
+            raise ValueError("Only a paused deployment can be resumed")
+
+        if deployment.target == "baseten" and deployment.mode == "configured":
+            activate_baseten_deployment(self.settings, deployment=deployment)
+
+        deployment.status = "live"
         self.write(state)
         return {"state": state, "deployment": deployment}
 
@@ -554,16 +576,34 @@ class StateRepository:
         for deployment in deployments:
             self._delete_provider_deployment(deployment)
 
-        if get_provider_health(self.settings).modal == "configured":
-            delete_checkpoint_artifact(self.settings, artifact_uri=checkpoint.artifactUri)
+        artifact_is_shared = any(
+            item.id != checkpoint_id and item.artifactUri == checkpoint.artifactUri
+            for item in state.checkpoints
+        )
+        artifact_deleted = False
+        if (
+            not artifact_is_shared
+            and get_provider_health(self.settings).modal == "configured"
+        ):
+            result = delete_checkpoint_artifact(
+                self.settings,
+                artifact_uri=checkpoint.artifactUri,
+            )
+            artifact_deleted = bool(result.get("deleted"))
 
         state.deployments = [item for item in state.deployments if item.checkpointId != checkpoint_id]
         state.checkpoints = [item for item in state.checkpoints if item.id != checkpoint_id]
         self.write(state)
-        return {"state": state, "checkpoint": checkpoint, "deployments": deployments}
+        return {
+            "state": state,
+            "checkpoint": checkpoint,
+            "deployments": deployments,
+            "artifactDeleted": artifact_deleted,
+            "artifactRetained": artifact_is_shared,
+        }
 
     def _delete_provider_deployment(self, deployment: Deployment) -> None:
-        if deployment.target == "baseten" and deployment.mode == "configured" and deployment.providerModelId:
+        if deployment.target == "baseten" and deployment.mode == "configured":
             delete_baseten_model(self.settings, deployment=deployment)
 
     def _write_dataset_artifact(

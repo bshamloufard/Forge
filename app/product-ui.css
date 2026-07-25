@@ -651,9 +651,38 @@ label {
 .data-frame,
 .evaluation-frame,
 .empty-stage,
-.release-metrics {
+.release-metrics,
+.cost-control-note {
   border: 1px solid var(--line-strong);
   background: var(--surface);
+}
+
+.cost-control-note {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cost-control-note > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border-right: 1px solid var(--line);
+}
+
+.cost-control-note > div:last-child {
+  border-right: 0;
+}
+
+.cost-control-note strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cost-control-note span {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .operation-frame {
@@ -1978,6 +2007,19 @@ label {
 
   .metric-cell:nth-child(-n + 2) {
     border-bottom: 1px solid var(--line);
+  }
+
+  .cost-control-note {
+    grid-template-columns: 1fr;
+  }
+
+  .cost-control-note > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .cost-control-note > div:last-child {
+    border-bottom: 0;
   }
 
   .table-header {
