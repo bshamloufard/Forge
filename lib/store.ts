@@ -29,6 +29,7 @@ function initialState(): ForgeState {
       organization: "Default Org",
       createdAt
     },
+    datasets: [],
     sessions: [],
     runs: [],
     checkpoints: [],

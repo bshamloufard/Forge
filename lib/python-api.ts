@@ -9,7 +9,11 @@ import {
 
 const MAX_PROXY_BODY_BYTES = 1024 * 1024;
 
-export async function proxyToPython(request: Request, path: string) {
+export async function proxyToPython(
+  request: Request,
+  path: string,
+  options: { maxBodyBytes?: number } = {}
+) {
   const publicRequest = path === "/api/health" || path === "/health";
   const auth = publicRequest ? null : await authenticateRequest(request);
   if (!publicRequest && !auth) {
@@ -50,7 +54,10 @@ export async function proxyToPython(request: Request, path: string) {
   };
   if (!["GET", "HEAD"].includes(request.method)) {
     try {
-      init.body = await readRequestBody(request, MAX_PROXY_BODY_BYTES);
+      init.body = await readRequestBody(
+        request,
+        options.maxBodyBytes ?? MAX_PROXY_BODY_BYTES
+      );
     } catch (error) {
       if (error instanceof RequestBodyTooLargeError) {
         return Response.json(

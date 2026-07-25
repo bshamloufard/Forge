@@ -7,6 +7,7 @@ import textwrap
 import uuid
 import json
 import time
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -44,9 +45,16 @@ app = modal.App(APP_NAME)
 def run_tiny_finetune(
     run_id: str,
     model_id: str = "sshleifer/tiny-gpt2",
+    dataset_source_type: str = "huggingface",
     dataset_id: str = "Abirate/english_quotes",
+    dataset_config: str | None = None,
     dataset_split: str = "train[:8]",
+    dataset_revision: str | None = None,
+    dataset_url: str | None = None,
+    dataset_filename: str | None = None,
+    dataset_adapter: dict[str, Any] | None = None,
     max_steps: int = 2,
+    max_rows: int = 256,
     max_length: int = 64,
 ) -> dict[str, Any]:
     import torch
@@ -54,18 +62,41 @@ def run_tiny_finetune(
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     started = time.time()
+    checkpoints.reload()
     output_dir = CHECKPOINT_ROOT / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    dataset = load_dataset(dataset_id, split=dataset_split)
-    rows = [format_training_text(row) for row in dataset]
-    rows = [row for row in rows if row.strip()]
-    if not rows:
-        raise ValueError(f"Dataset {dataset_id} {dataset_split} did not produce text rows")
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+
+    if dataset_source_type == "upload":
+        if not dataset_url:
+            raise ValueError("Uploaded dataset URL is required")
+        suffix = Path(dataset_filename or "").suffix.lower()
+        loader = "csv" if suffix == ".csv" else "json"
+        dataset = load_dataset(
+            loader,
+            data_files={"train": dataset_url},
+            split="train",
+            streaming=True,
+        )
+    else:
+        load_kwargs: dict[str, Any] = {
+            "split": dataset_split,
+            "streaming": "[" not in dataset_split,
+        }
+        if dataset_revision:
+            load_kwargs["revision"] = dataset_revision
+        dataset = load_dataset(dataset_id, dataset_config, **load_kwargs)
+
+    rows = [
+        text
+        for row in islice(iter(dataset), max(1, max_rows))
+        if (text := format_training_text(row, dataset_adapter, tokenizer)).strip()
+    ]
+    if not rows:
+        raise ValueError(f"Dataset {dataset_id} {dataset_split} did not produce text rows")
 
     model = AutoModelForCausalLM.from_pretrained(model_id)
     model.train()
@@ -100,8 +131,12 @@ def run_tiny_finetune(
     metadata = {
         "run_id": run_id,
         "model_id": model_id,
+        "dataset_source_type": dataset_source_type,
         "dataset_id": dataset_id,
+        "dataset_config": dataset_config,
         "dataset_split": dataset_split,
+        "dataset_revision": dataset_revision,
+        "dataset_adapter": dataset_adapter,
         "rows": len(rows),
         "steps": len(losses),
         "loss": losses[-1],
@@ -131,6 +166,7 @@ def deploy_checkpoint_to_baseten(
     if not baseten_api_key.strip():
         raise ValueError("BASETEN_API_KEY is required")
 
+    checkpoints.reload()
     artifact_dir = CHECKPOINT_ROOT / run_id
     if not artifact_dir.exists():
         raise FileNotFoundError(f"Checkpoint artifact not found in Modal volume: {artifact_dir}")
@@ -289,18 +325,40 @@ def delete_baseten_model(
     memory=1024,
 )
 def delete_checkpoint_artifact(run_id: str) -> dict[str, Any]:
-    artifact_dir = CHECKPOINT_ROOT / run_id
-    if not artifact_dir.exists():
+    try:
+        checkpoints.remove_file(run_id, recursive=True)
+    except (FileNotFoundError, modal.exception.InvalidError, modal.exception.NotFoundError):
         return {"run_id": run_id, "deleted": False}
-    if artifact_dir.is_dir():
-        shutil.rmtree(artifact_dir)
-    else:
-        artifact_dir.unlink()
-    checkpoints.commit()
     return {"run_id": run_id, "deleted": True}
 
 
-def format_training_text(row: dict[str, Any]) -> str:
+def format_training_text(
+    row: dict[str, Any],
+    adapter: dict[str, Any] | None = None,
+    tokenizer: Any | None = None,
+) -> str:
+    if adapter:
+        adapter_format = adapter.get("format")
+        if adapter_format == "text":
+            return _nonempty_text(row.get(adapter.get("textField") or "")) or ""
+        if adapter_format == "prompt_response":
+            prompt = _nonempty_text(row.get(adapter.get("promptField") or ""))
+            response = _nonempty_text(row.get(adapter.get("responseField") or ""))
+            optional_input = _nonempty_text(row.get(adapter.get("inputField") or ""))
+            if not prompt or not response:
+                return ""
+            user_content = prompt if not optional_input else f"{prompt}\n\nInput:\n{optional_input}"
+            return _format_messages(
+                [
+                    {"role": "user", "content": user_content},
+                    {"role": "assistant", "content": response},
+                ],
+                tokenizer,
+            )
+        if adapter_format == "messages":
+            messages = _adapt_messages(row, adapter)
+            return _format_messages(messages, tokenizer) if messages else ""
+
     if "quote" in row:
         author = row.get("author") or "unknown"
         return f"Quote by {author}: {row['quote']}"
@@ -311,6 +369,59 @@ def format_training_text(row: dict[str, Any]) -> str:
     if "text" in row:
         return str(row["text"])
     return " ".join(str(value) for value in row.values() if isinstance(value, str))
+
+
+def _adapt_messages(row: dict[str, Any], adapter: dict[str, Any]) -> list[dict[str, str]]:
+    value = row.get(adapter.get("messagesField") or "")
+    if not isinstance(value, list):
+        return []
+    role_field = adapter.get("roleField") or "role"
+    content_field = adapter.get("contentField") or "content"
+    role_map = {
+        "system": "system",
+        "user": "user",
+        "assistant": "assistant",
+        "tool": "tool",
+        "human": "user",
+        "gpt": "assistant",
+        "bot": "assistant",
+        **{
+            str(key).lower(): str(mapped).lower()
+            for key, mapped in (adapter.get("roleMap") or {}).items()
+        },
+    }
+    messages = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        source_role = _nonempty_text(item.get(role_field))
+        content = _nonempty_text(item.get(content_field))
+        if not source_role or not content:
+            continue
+        role = role_map.get(source_role.lower(), source_role.lower())
+        if role in {"system", "user", "assistant", "tool"}:
+            messages.append({"role": role, "content": content})
+    if not any(message["role"] == "assistant" for message in messages):
+        return []
+    return messages
+
+
+def _format_messages(messages: list[dict[str, str]], tokenizer: Any | None) -> str:
+    if tokenizer is not None and getattr(tokenizer, "chat_template", None):
+        return str(
+            tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+        )
+    return "\n".join(f"{message['role'].title()}: {message['content']}" for message in messages)
+
+
+def _nonempty_text(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def _baseten_safe_name(value: str) -> str:

@@ -11,6 +11,12 @@ Tinker product surface. The intended MVP stack is:
 - Modal for training jobs, samplers, sandboxes, and batch eval workers
 - Baseten as the first OpenAI-compatible serving target
 
+Developers can register training data from a public Hugging Face dataset or upload
+JSONL, JSON, or CSV data in the dashboard. Forge validates the schema, adds a
+reusable adapter, stores uploads privately, and pins the chosen dataset to each run.
+See [docs/datasets.md](docs/datasets.md) for the API, adapter contract, limits, and
+research rationale.
+
 See [plan.md](plan.md) for the product and architecture plan. See
 [docs/python-backend-handoff.md](docs/python-backend-handoff.md) for the
 handoff that explains the Python backend migration and next implementation

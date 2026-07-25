@@ -18,6 +18,7 @@ export type Session = {
   creator: string;
   model: string;
   recipe: RecipeId;
+  datasetId?: string | null;
   provider: "modal";
   createdAt: string;
   updatedAt: string;
@@ -27,6 +28,7 @@ export type TrainingRun = {
   id: string;
   sessionId: string;
   name: string;
+  datasetId?: string | null;
   status: RunStatus;
   step: number;
   targetSteps: number;
@@ -77,8 +79,56 @@ export type VerifierScore = {
   createdAt: string;
 };
 
+export type DatasetAdapter = {
+  format: "text" | "prompt_response" | "messages";
+  textField?: string | null;
+  promptField?: string | null;
+  responseField?: string | null;
+  inputField?: string | null;
+  messagesField?: string | null;
+  roleField?: string | null;
+  contentField?: string | null;
+  roleMap: Record<string, string>;
+  canonicalVersion: "forge-chat-v1";
+};
+
+export type DatasetQuality = {
+  inspectedRows: number;
+  validRows: number;
+  invalidRows: number;
+  duplicateRows: number;
+  averageCharacters: number;
+};
+
+export type Dataset = {
+  id: string;
+  projectId: string;
+  name: string;
+  sourceType: "huggingface" | "upload";
+  sourceUri: string;
+  sourceConfig?: string | null;
+  sourceSplit: string;
+  sourceRevision?: string | null;
+  fileName?: string | null;
+  contentType?: string | null;
+  byteSize?: number | null;
+  storageUri?: string | null;
+  status: "ready" | "needs_mapping" | "failed";
+  adapter?: DatasetAdapter | null;
+  columns: string[];
+  rowCount?: number | null;
+  preview: Array<Record<string, unknown>>;
+  canonicalPreview: string[];
+  quality: DatasetQuality;
+  warnings: string[];
+  validationErrors: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ForgeState = {
   project: Project;
+  datasets: Dataset[];
   sessions: Session[];
   runs: TrainingRun[];
   checkpoints: Checkpoint[];

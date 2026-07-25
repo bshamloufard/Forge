@@ -4,11 +4,18 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from forge_api.models.domain import Checkpoint, Deployment
+from forge_api.models.domain import Checkpoint, Dataset, Deployment
 from forge_api.settings import Settings
 
 
-def run_tiny_finetune(settings: Settings, *, run_id: str) -> dict[str, Any]:
+def run_tiny_finetune(
+    settings: Settings,
+    *,
+    run_id: str,
+    model_id: str | None = None,
+    dataset: Dataset | None = None,
+    dataset_url: str | None = None,
+) -> dict[str, Any]:
     import modal
 
     with _modal_client(modal, settings) as client:
@@ -18,12 +25,21 @@ def run_tiny_finetune(settings: Settings, *, run_id: str) -> dict[str, Any]:
             environment_name=settings.modal_environment,
             client=client,
         )
+        source_type = dataset.sourceType if dataset else "huggingface"
+        source_uri = dataset.sourceUri.removeprefix("hf://") if dataset else settings.training_dataset_id
         return function.remote(
             run_id=run_id,
-            model_id=settings.training_model_id,
-            dataset_id=settings.training_dataset_id,
-            dataset_split=settings.training_dataset_split,
+            model_id=model_id or settings.training_model_id,
+            dataset_source_type=source_type,
+            dataset_id=source_uri,
+            dataset_config=dataset.sourceConfig if dataset else None,
+            dataset_split=dataset.sourceSplit if dataset else settings.training_dataset_split,
+            dataset_revision=dataset.sourceRevision if dataset else None,
+            dataset_url=dataset_url,
+            dataset_filename=dataset.fileName if dataset else None,
+            dataset_adapter=dataset.adapter.model_dump() if dataset and dataset.adapter else None,
             max_steps=settings.training_max_steps,
+            max_rows=settings.training_max_rows,
         )
 
 

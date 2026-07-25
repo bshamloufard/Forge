@@ -6,7 +6,17 @@ from urllib.parse import quote
 import httpx
 
 from forge_api.ids import create_id
-from forge_api.models.domain import Checkpoint, Deployment, ForgeState, Project, Session, TrainingRun, VerifierScore
+from forge_api.models.domain import (
+    Checkpoint,
+    Dataset,
+    DatasetAdapter,
+    Deployment,
+    ForgeState,
+    Project,
+    Session,
+    TrainingRun,
+    VerifierScore,
+)
 from forge_api.providers.health import create_serving_endpoint
 from forge_api.providers.health import get_provider_health
 from forge_api.providers.modal_client import (
@@ -18,6 +28,11 @@ from forge_api.providers.modal_client import (
 )
 from forge_api.recipes import recipes
 from forge_api.services.credentials import RequestIdentity
+from forge_api.services.datasets import (
+    DatasetValidationError,
+    inspect_huggingface_dataset,
+    inspect_uploaded_dataset,
+)
 from forge_api.services.verifier import score_candidate
 from forge_api.settings import Settings
 
@@ -91,6 +106,7 @@ class StateRepository:
                 organization=self.identity.email or "Default Org",
                 createdAt=created_at,
             ),
+            datasets=[],
             sessions=[],
             runs=[],
             checkpoints=[],
@@ -144,9 +160,147 @@ class StateRepository:
             "authorization": f"Bearer {service_key}",
         }
 
-    def create_session(self, *, name: str, model: str, recipe: str, target_steps: int | None) -> dict[str, object]:
+    def create_huggingface_dataset(
+        self,
+        *,
+        name: str | None,
+        reference: str,
+        config: str | None,
+        split: str | None,
+        revision: str | None,
+        adapter: DatasetAdapter | None,
+    ) -> dict[str, object]:
+        dataset_id, inspection = inspect_huggingface_dataset(
+            reference,
+            config=config,
+            split=split,
+            revision=revision,
+            adapter=adapter,
+        )
         state = self.read()
         timestamp = now()
+        dataset = Dataset(
+            id=create_id("dset"),
+            projectId=state.project.id,
+            name=name or dataset_id.split("/", 1)[-1],
+            sourceType="huggingface",
+            sourceUri=f"hf://{dataset_id}",
+            sourceConfig=inspection.source_config,
+            sourceSplit=inspection.source_split,
+            sourceRevision=revision,
+            status=inspection.status,  # type: ignore[arg-type]
+            adapter=inspection.adapter,
+            columns=inspection.columns,
+            rowCount=inspection.row_count,
+            preview=inspection.preview,
+            canonicalPreview=inspection.canonical_preview,
+            quality=inspection.quality,
+            warnings=inspection.warnings,
+            validationErrors=inspection.validation_errors,
+            createdAt=timestamp,
+            updatedAt=timestamp,
+        )
+        state.datasets.insert(0, dataset)
+        self.write(state)
+        return {"state": state, "dataset": dataset}
+
+    def create_uploaded_dataset(
+        self,
+        *,
+        name: str | None,
+        filename: str,
+        content_type: str | None,
+        payload: bytes,
+    ) -> dict[str, object]:
+        inspection = inspect_uploaded_dataset(payload, filename)
+        state = self.read()
+        timestamp = now()
+        dataset_id = create_id("dset")
+        storage_uri = self._write_dataset_artifact(dataset_id, filename, content_type, payload)
+        dataset = Dataset(
+            id=dataset_id,
+            projectId=state.project.id,
+            name=name or Path(filename).stem,
+            sourceType="upload",
+            sourceUri=f"upload://{Path(filename).name}",
+            sourceSplit="train",
+            fileName=Path(filename).name,
+            contentType=content_type,
+            byteSize=len(payload),
+            storageUri=storage_uri,
+            status=inspection.status,  # type: ignore[arg-type]
+            adapter=inspection.adapter,
+            columns=inspection.columns,
+            rowCount=inspection.row_count,
+            preview=inspection.preview,
+            canonicalPreview=inspection.canonical_preview,
+            quality=inspection.quality,
+            warnings=inspection.warnings,
+            validationErrors=inspection.validation_errors,
+            createdAt=timestamp,
+            updatedAt=timestamp,
+        )
+        state.datasets.insert(0, dataset)
+        self.write(state)
+        return {"state": state, "dataset": dataset}
+
+    def update_dataset_adapter(
+        self,
+        dataset_id: str,
+        adapter: DatasetAdapter,
+    ) -> dict[str, object]:
+        state = self.read()
+        dataset = _find_dataset(state, dataset_id)
+        if dataset.sourceType == "huggingface":
+            _, inspection = inspect_huggingface_dataset(
+                dataset.sourceUri.removeprefix("hf://"),
+                config=dataset.sourceConfig,
+                split=dataset.sourceSplit,
+                revision=dataset.sourceRevision,
+                adapter=adapter,
+            )
+        else:
+            payload = self._read_dataset_artifact(dataset)
+            inspection = inspect_uploaded_dataset(payload, dataset.fileName or "dataset.jsonl", adapter)
+
+        dataset.adapter = inspection.adapter
+        dataset.status = inspection.status  # type: ignore[assignment]
+        dataset.columns = inspection.columns
+        dataset.rowCount = inspection.row_count
+        dataset.preview = inspection.preview
+        dataset.canonicalPreview = inspection.canonical_preview
+        dataset.quality = inspection.quality
+        dataset.warnings = inspection.warnings
+        dataset.validationErrors = inspection.validation_errors
+        dataset.updatedAt = now()
+        self.write(state)
+        return {"state": state, "dataset": dataset}
+
+    def delete_dataset(self, dataset_id: str) -> dict[str, object]:
+        state = self.read()
+        dataset = _find_dataset(state, dataset_id)
+        if any(session.datasetId == dataset_id for session in state.sessions):
+            raise ValueError("Dataset is used by an existing training session.")
+        if dataset.sourceType == "upload":
+            self._delete_dataset_artifact(dataset)
+        state.datasets = [item for item in state.datasets if item.id != dataset_id]
+        self.write(state)
+        return {"state": state, "dataset": dataset}
+
+    def create_session(
+        self,
+        *,
+        name: str,
+        model: str,
+        recipe: str,
+        dataset_id: str | None,
+        target_steps: int | None,
+    ) -> dict[str, object]:
+        state = self.read()
+        timestamp = now()
+        dataset = _find_dataset(state, dataset_id) if dataset_id else None
+        if dataset and dataset.status != "ready":
+            raise DatasetValidationError("The selected dataset needs a valid adapter before training.")
         session = Session(
             id=create_id("ses"),
             projectId=state.project.id,
@@ -154,6 +308,7 @@ class StateRepository:
             creator=self.identity.email or "researcher@forge.local",
             model=model,
             recipe=recipe,  # type: ignore[arg-type]
+            datasetId=dataset.id if dataset else None,
             createdAt=timestamp,
             updatedAt=timestamp,
         )
@@ -161,6 +316,7 @@ class StateRepository:
             id=create_id("run"),
             sessionId=session.id,
             name=f"{recipes[session.recipe]['name'].lower().replace(' ', '-')}-run",
+            datasetId=dataset.id if dataset else None,
             status="queued",
             step=0,
             targetSteps=target_steps or 100,
@@ -169,7 +325,13 @@ class StateRepository:
             verifierScore=0.31,
             tokens=0,
             costUsd=0,
-            logs=[f"created {recipes[session.recipe]['name']} session for {model}", "waiting for first forward_backward call"],
+            logs=[
+                (
+                    f"created {recipes[session.recipe]['name']} session for {model} "
+                    f"dataset={dataset.name if dataset else 'legacy-default'}"
+                ),
+                "waiting for first forward_backward call",
+            ],
             createdAt=timestamp,
             updatedAt=timestamp,
         )
@@ -182,6 +344,7 @@ class StateRepository:
         state = self.read()
         run = _find_run(state, run_id)
         session = _find_session(state, run.sessionId)
+        dataset = _find_dataset(state, session.datasetId) if session.datasetId else None
         if self.settings.modal_token_id and self.settings.modal_token_secret:
             run.status = "running"
             run.updatedAt = now()
@@ -190,13 +353,19 @@ class StateRepository:
                 (
                     "modal run_tiny_finetune starting "
                     f"model={self.settings.training_model_id} "
-                    f"dataset={self.settings.training_dataset_id} "
-                    f"split={self.settings.training_dataset_split}"
+                    f"dataset={dataset.sourceUri if dataset else self.settings.training_dataset_id} "
+                    f"split={dataset.sourceSplit if dataset else self.settings.training_dataset_split}"
                 ),
             )
             self.write(state)
             try:
-                result = run_tiny_finetune(self.settings, run_id=run.id)
+                result = run_tiny_finetune(
+                    self.settings,
+                    run_id=run.id,
+                    model_id=session.model,
+                    dataset=dataset,
+                    dataset_url=self._signed_dataset_url(dataset) if dataset and dataset.sourceType == "upload" else None,
+                )
             except Exception:
                 state = self.read()
                 run = _find_run(state, run_id)
@@ -397,6 +566,117 @@ class StateRepository:
         if deployment.target == "baseten" and deployment.mode == "configured" and deployment.providerModelId:
             delete_baseten_model(self.settings, deployment=deployment)
 
+    def _write_dataset_artifact(
+        self,
+        dataset_id: str,
+        filename: str,
+        content_type: str | None,
+        payload: bytes,
+    ) -> str:
+        safe_name = _safe_filename(filename)
+        object_path = f"{self.identity.safe_user_id}/{dataset_id}/{safe_name}"
+        service_key = self.settings.supabase_secret_key or self.settings.supabase_service_role_key
+        if self.settings.supabase_url and service_key:
+            bucket = quote(self.settings.dataset_bucket, safe="")
+            encoded_path = quote(object_path, safe="/")
+            response = httpx.post(
+                f"{self.settings.supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{encoded_path}",
+                headers={
+                    **self._supabase_storage_headers(),
+                    "content-type": content_type or "application/octet-stream",
+                    "x-upsert": "false",
+                },
+                content=payload,
+                timeout=30,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise RuntimeError("Could not store the uploaded dataset") from exc
+            return f"supabase://{self.settings.dataset_bucket}/{object_path}"
+
+        target = self.path.parent / "datasets" / self.identity.safe_user_id / dataset_id / safe_name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        return target.resolve().as_uri()
+
+    def _read_dataset_artifact(self, dataset: Dataset) -> bytes:
+        if not dataset.storageUri:
+            raise RuntimeError("Dataset artifact is missing")
+        if dataset.storageUri.startswith("supabase://"):
+            bucket, object_path = _split_supabase_uri(dataset.storageUri)
+            response = httpx.get(
+                (
+                    f"{self.settings.supabase_url.rstrip('/')}/storage/v1/object/authenticated/"
+                    f"{quote(bucket, safe='')}/{quote(object_path, safe='/')}"
+                ),
+                headers=self._supabase_storage_headers(),
+                timeout=30,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise RuntimeError("Could not read the uploaded dataset") from exc
+            return response.content
+        if dataset.storageUri.startswith("file://"):
+            return Path(dataset.storageUri.removeprefix("file://")).read_bytes()
+        raise RuntimeError("Dataset artifact URI is not supported")
+
+    def _signed_dataset_url(self, dataset: Dataset) -> str:
+        if not dataset.storageUri or not dataset.storageUri.startswith("supabase://"):
+            raise RuntimeError("Uploaded datasets require Supabase Storage for remote training")
+        if not self.settings.supabase_url:
+            raise RuntimeError("Supabase Storage is not configured")
+        bucket, object_path = _split_supabase_uri(dataset.storageUri)
+        response = httpx.post(
+            (
+                f"{self.settings.supabase_url.rstrip('/')}/storage/v1/object/sign/"
+                f"{quote(bucket, safe='')}/{quote(object_path, safe='/')}"
+            ),
+            headers={
+                **self._supabase_storage_headers(),
+                "content-type": "application/json",
+            },
+            json={"expiresIn": 3600},
+            timeout=20,
+        )
+        try:
+            response.raise_for_status()
+            signed_path = response.json()["signedURL"]
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            raise RuntimeError("Could not authorize the training worker to read the dataset") from exc
+        if str(signed_path).startswith("http"):
+            return str(signed_path)
+        return f"{self.settings.supabase_url.rstrip('/')}/storage/v1{signed_path}"
+
+    def _delete_dataset_artifact(self, dataset: Dataset) -> None:
+        if not dataset.storageUri:
+            return
+        if dataset.storageUri.startswith("supabase://"):
+            bucket, object_path = _split_supabase_uri(dataset.storageUri)
+            response = httpx.delete(
+                (
+                    f"{self.settings.supabase_url.rstrip('/')}/storage/v1/object/"
+                    f"{quote(bucket, safe='')}/{quote(object_path, safe='/')}"
+                ),
+                headers=self._supabase_storage_headers(),
+                timeout=20,
+            )
+            response.raise_for_status()
+        elif dataset.storageUri.startswith("file://"):
+            path = Path(dataset.storageUri.removeprefix("file://"))
+            if path.is_file():
+                path.unlink()
+
+    def _supabase_storage_headers(self) -> dict[str, str]:
+        service_key = self.settings.supabase_secret_key or self.settings.supabase_service_role_key
+        if not self.settings.supabase_url or not service_key:
+            raise RuntimeError("Supabase Storage is not configured")
+        return {
+            "apikey": service_key,
+            "authorization": f"Bearer {service_key}",
+        }
+
 
 def _resolve_path(settings: Settings, identity: RequestIdentity) -> Path:
     path = settings.state_path
@@ -419,6 +699,27 @@ def _find_session(state: ForgeState, session_id: str) -> Session:
     if session is None:
         raise KeyError("Session not found")
     return session
+
+
+def _find_dataset(state: ForgeState, dataset_id: str | None) -> Dataset:
+    dataset = next((item for item in state.datasets if item.id == dataset_id), None)
+    if dataset is None:
+        raise KeyError("Dataset not found")
+    return dataset
+
+
+def _safe_filename(filename: str) -> str:
+    basename = Path(filename).name
+    safe = "".join(character if character.isalnum() or character in "._-" else "_" for character in basename)
+    return safe[:160] or "dataset.jsonl"
+
+
+def _split_supabase_uri(uri: str) -> tuple[str, str]:
+    value = uri.removeprefix("supabase://")
+    bucket, separator, object_path = value.partition("/")
+    if not separator or not bucket or not object_path:
+        raise RuntimeError("Dataset storage URI is invalid")
+    return bucket, object_path
 
 
 def _string_or_none(value: object) -> str | None:

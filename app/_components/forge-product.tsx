@@ -11,15 +11,19 @@ import {
   CircleAlert,
   Clock3,
   Cloud,
+  Database,
   ExternalLink,
+  FileUp,
   FlaskConical,
   GitBranch,
   Layers3,
+  Link2,
   Play,
   Power,
   Save,
   Server,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   TerminalSquare,
   Trash2,
@@ -38,6 +42,8 @@ import type { SafeAccountSummary } from "@/lib/account";
 import { ProviderOnboardingDialog } from "@/app/(dashboard)/account/provider-settings-form";
 import type {
   Checkpoint,
+  Dataset,
+  DatasetAdapter,
   Deployment,
   ForgeState,
   ProviderHealth,
@@ -55,6 +61,7 @@ type RunForm = {
   name: string;
   model: string;
   recipe: RecipeId;
+  datasetId: string;
   targetSteps: number;
 };
 
@@ -75,18 +82,22 @@ type ForgeContextValue = {
   setCandidate: (value: string) => void;
   setRubric: (value: string) => void;
   setRunForm: (value: RunForm) => void;
+  uploadDataset: (formData: FormData) => Promise<{ dataset: Dataset }>;
+  deleteDataset: (datasetId: string) => Promise<void>;
 };
 
 const apiPath = (path: string) => path;
 
 const navigation = [
   ["Train", "/runs", Activity],
+  ["Data", "/datasets", Database],
   ["Deploy", "/deployments", Cloud],
   ["Evaluate", "/evaluate", BrainCircuit]
 ] as const;
 
 const pageLabels: Record<string, string> = {
   "/runs": "Train",
+  "/datasets": "Data",
   "/evaluate": "Evaluate",
   "/deployments": "Deploy",
   "/account": "Account"
@@ -133,6 +144,7 @@ function ForgeProvider({ children }: { children: React.ReactNode }) {
     name: "Research run",
     model: "sshleifer/tiny-gpt2",
     recipe: "chat-sft",
+    datasetId: "",
     targetSteps: 8
   });
 
@@ -158,6 +170,44 @@ function ForgeProvider({ children }: { children: React.ReactNode }) {
       return payload;
     } catch (event) {
       setError(event instanceof Error ? event.message : "Request failed");
+      throw event;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function uploadDataset(formData: FormData) {
+    setBusy("dataset-upload");
+    setError("");
+    try {
+      const response = await fetchWithRenderRetry(
+        apiPath("/api/v1/datasets/upload"),
+        { method: "POST", body: formData }
+      );
+      if (!response.ok) throw new Error(response.errorText);
+      const payload = (await response.json()) as { dataset: Dataset };
+      await refresh();
+      return payload;
+    } catch (event) {
+      setError(event instanceof Error ? event.message : "Dataset upload failed");
+      throw event;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteDataset(datasetId: string) {
+    setBusy("dataset-delete");
+    setError("");
+    try {
+      const response = await fetchWithRenderRetry(
+        apiPath(`/api/v1/datasets/${datasetId}`),
+        { method: "DELETE" }
+      );
+      if (!response.ok) throw new Error(response.errorText);
+      await refresh();
+    } catch (event) {
+      setError(event instanceof Error ? event.message : "Dataset deletion failed");
       throw event;
     } finally {
       setBusy(null);
@@ -211,7 +261,9 @@ function ForgeProvider({ children }: { children: React.ReactNode }) {
     setSample,
     setCandidate,
     setRubric,
-    setRunForm
+    setRunForm,
+    uploadDataset,
+    deleteDataset
   };
 
   return <ForgeContext.Provider value={value}>{children}</ForgeContext.Provider>;
@@ -355,6 +407,11 @@ export function TrainPage() {
         (deployment) => deployment.checkpointId === activeCheckpoint.id
       )
     : undefined;
+  const activeDataset = activeSession?.datasetId
+    ? forge.state.datasets.find(
+        (dataset) => dataset.id === activeSession.datasetId
+      )
+    : undefined;
 
   const workflow = [
     { label: "Configure", complete: Boolean(activeSession) },
@@ -423,7 +480,9 @@ export function TrainPage() {
               <h2 id="active-run-title">{activeSession.name}</h2>
               <p>
                 {activeSession.model} <span aria-hidden="true">·</span>{" "}
-                {recipes[activeSession.recipe].name}
+                {recipes[activeSession.recipe].name}{" "}
+                <span aria-hidden="true">·</span>{" "}
+                {activeDataset?.name ?? "Legacy default dataset"}
               </p>
             </div>
             <code>{activeRun.id}</code>
@@ -562,6 +621,525 @@ export function TrainPage() {
       </section>
     </div>
   );
+}
+
+export function DatasetsPage() {
+  const forge = useReadyForge();
+  const [source, setSource] = useState<"huggingface" | "upload">("huggingface");
+  const [hfForm, setHfForm] = useState({
+    name: "",
+    dataset: "",
+    config: "",
+    split: "",
+    revision: ""
+  });
+  const [uploadName, setUploadName] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [localError, setLocalError] = useState("");
+
+  async function linkHuggingFace(event: React.FormEvent) {
+    event.preventDefault();
+    setLocalError("");
+    try {
+      await forge.mutate("dataset-link", "/api/v1/datasets/huggingface", {
+        name: hfForm.name.trim() || undefined,
+        dataset: hfForm.dataset.trim(),
+        config: hfForm.config.trim() || undefined,
+        split: hfForm.split.trim() || undefined,
+        revision: hfForm.revision.trim() || undefined
+      });
+      setHfForm({ name: "", dataset: "", config: "", split: "", revision: "" });
+    } catch {
+      // ForgeProvider surfaces the request error in the shared alert.
+    }
+  }
+
+  async function upload(event: React.FormEvent) {
+    event.preventDefault();
+    setLocalError("");
+    if (!uploadFile) return;
+    if (uploadFile.size > 6 * 1024 * 1024) {
+      setLocalError("Uploads are limited to 6 MiB. Link larger datasets from Hugging Face.");
+      return;
+    }
+    const form = new FormData();
+    form.set("file", uploadFile);
+    if (uploadName.trim()) form.set("name", uploadName.trim());
+    try {
+      await forge.uploadDataset(form);
+      setUploadName("");
+      setUploadFile(null);
+      const input = document.getElementById("dataset-file") as HTMLInputElement | null;
+      if (input) input.value = "";
+    } catch {
+      // ForgeProvider surfaces the request error in the shared alert.
+    }
+  }
+
+  async function remove(dataset: Dataset) {
+    if (
+      !window.confirm(
+        `Delete dataset ${dataset.name}? Uploaded source files are removed too.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await forge.deleteDataset(dataset.id);
+    } catch {
+      // ForgeProvider surfaces the request error in the shared alert.
+    }
+  }
+
+  const readyDatasets = forge.state.datasets.filter(
+    (dataset) => dataset.status === "ready"
+  ).length;
+  const totalRows = forge.state.datasets.reduce(
+    (sum, dataset) => sum + (dataset.rowCount ?? 0),
+    0
+  );
+
+  return (
+    <div className="page-flow">
+      <PageIntro
+        eyebrow="Training data"
+        title="Dataset registry"
+        copy="Link a Hugging Face dataset or upload structured data. Forge inspects the schema, adds an adapter, and pins the selected source to every new run."
+      />
+
+      <div className="metric-strip dataset-metrics">
+        <MetricCell
+          label="Datasets"
+          value={forge.state.datasets.length}
+          icon={Database}
+          tone="info"
+        />
+        <MetricCell
+          label="Ready"
+          value={readyDatasets}
+          icon={CheckCircle2}
+          tone="success"
+        />
+        <MetricCell
+          label="Known rows"
+          value={totalRows.toLocaleString()}
+          icon={Layers3}
+          tone="purple"
+        />
+        <MetricCell
+          label="Canonical schema"
+          value="forge-chat-v1"
+          icon={SlidersHorizontal}
+          tone="warning"
+        />
+      </div>
+
+      <section className="dataset-connect-frame" aria-labelledby="connect-dataset-title">
+        <header className="dataset-connect-header">
+          <div>
+            <span>Add source</span>
+            <h2 id="connect-dataset-title">Connect a dataset</h2>
+          </div>
+          <div className="source-tabs" role="tablist" aria-label="Dataset source">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === "huggingface"}
+              className={source === "huggingface" ? "active" : undefined}
+              onClick={() => setSource("huggingface")}
+            >
+              <Link2 size={15} />
+              Hugging Face
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === "upload"}
+              className={source === "upload" ? "active" : undefined}
+              onClick={() => setSource("upload")}
+            >
+              <FileUp size={15} />
+              Upload
+            </button>
+          </div>
+        </header>
+
+        {source === "huggingface" ? (
+          <form className="dataset-source-form hf-source-form" onSubmit={linkHuggingFace}>
+            <label>
+              Dataset URL or ID
+              <input
+                required
+                placeholder="HuggingFaceH4/no_robots"
+                value={hfForm.dataset}
+                onChange={(event) =>
+                  setHfForm({ ...hfForm, dataset: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Display name
+              <input
+                placeholder="Optional"
+                value={hfForm.name}
+                onChange={(event) =>
+                  setHfForm({ ...hfForm, name: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Configuration
+              <input
+                placeholder="Auto"
+                value={hfForm.config}
+                onChange={(event) =>
+                  setHfForm({ ...hfForm, config: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Split
+              <input
+                placeholder="train"
+                value={hfForm.split}
+                onChange={(event) =>
+                  setHfForm({ ...hfForm, split: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Revision
+              <input
+                placeholder="Optional tag or SHA"
+                value={hfForm.revision}
+                onChange={(event) =>
+                  setHfForm({ ...hfForm, revision: event.target.value })
+                }
+              />
+            </label>
+            <button
+              className="button primary"
+              type="submit"
+              disabled={forge.busy !== null || !hfForm.dataset.trim()}
+            >
+              <Link2 size={16} />
+              {forge.busy === "dataset-link" ? "Inspecting…" : "Inspect and add"}
+            </button>
+          </form>
+        ) : (
+          <form className="dataset-source-form upload-source-form" onSubmit={upload}>
+            <label>
+              Dataset file
+              <input
+                id="dataset-file"
+                required
+                type="file"
+                accept=".jsonl,.ndjson,.json,.csv,application/json,text/csv"
+                onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <label>
+              Display name
+              <input
+                placeholder="Optional"
+                value={uploadName}
+                onChange={(event) => setUploadName(event.target.value)}
+              />
+            </label>
+            <div className="upload-guidance">
+              <strong>JSONL, JSON, or CSV · 6 MiB maximum</strong>
+              <span>
+                Chat messages, instruction/output, prompt/response, question/answer,
+                and text columns are detected automatically.
+              </span>
+            </div>
+            <button
+              className="button primary"
+              type="submit"
+              disabled={forge.busy !== null || !uploadFile}
+            >
+              <FileUp size={16} />
+              {forge.busy === "dataset-upload" ? "Uploading…" : "Upload and inspect"}
+            </button>
+          </form>
+        )}
+        {localError ? (
+          <p className="dataset-local-error" role="alert">
+            {localError}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="data-frame" aria-labelledby="dataset-library-title">
+        <FrameHeader
+          eyebrow="Sources"
+          title="Dataset library"
+          id="dataset-library-title"
+          meta={`${forge.state.datasets.length} total`}
+        />
+        {forge.state.datasets.length ? (
+          <div className="dataset-list">
+            {forge.state.datasets.map((dataset) => (
+              <DatasetCard
+                dataset={dataset}
+                busy={forge.busy}
+                onDelete={() => remove(dataset)}
+                key={dataset.id}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyTable
+            title="No datasets yet"
+            copy="Link a public Hugging Face dataset or upload a small structured file to start training."
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function DatasetCard({
+  dataset,
+  busy,
+  onDelete
+}: {
+  dataset: Dataset;
+  busy: string | null;
+  onDelete: () => void;
+}) {
+  return (
+    <article className="dataset-card">
+      <header>
+        <div>
+          <div className="object-label">
+            <span>{dataset.sourceType === "huggingface" ? "Hugging Face" : "Upload"}</span>
+            <StatusTag status={dataset.status} />
+          </div>
+          <h3>{dataset.name}</h3>
+          <code>{dataset.sourceUri.replace("hf://", "")}</code>
+        </div>
+        <button
+          className="icon-button danger"
+          type="button"
+          disabled={busy !== null}
+          title={`Delete ${dataset.name}`}
+          aria-label={`Delete ${dataset.name}`}
+          onClick={onDelete}
+        >
+          <Trash2 size={15} />
+        </button>
+      </header>
+
+      <div className="dataset-summary">
+        <span>
+          <strong>{dataset.rowCount?.toLocaleString() ?? "Sampled"}</strong>
+          rows
+        </span>
+        <span>
+          <strong>{dataset.quality.validRows}/{dataset.quality.inspectedRows}</strong>
+          valid preview
+        </span>
+        <span>
+          <strong>{dataset.quality.duplicateRows}</strong>
+          duplicates
+        </span>
+        <span>
+          <strong>{dataset.quality.averageCharacters}</strong>
+          avg. characters
+        </span>
+      </div>
+
+      <div className="dataset-columns" aria-label="Detected columns">
+        {dataset.columns.map((column) => (
+          <code key={column}>{column}</code>
+        ))}
+      </div>
+
+      {dataset.adapter ? (
+        <div className="adapter-line">
+          <SlidersHorizontal size={15} />
+          <span>
+            <strong>{humanize(dataset.adapter.format)}</strong>
+            {adapterSummary(dataset.adapter)}
+          </span>
+        </div>
+      ) : null}
+
+      {dataset.canonicalPreview[0] ? (
+        <details className="dataset-preview">
+          <summary>Canonical preview</summary>
+          <pre>{dataset.canonicalPreview[0]}</pre>
+        </details>
+      ) : null}
+
+      {dataset.warnings.length || dataset.validationErrors.length ? (
+        <div className="dataset-notices">
+          {[...dataset.validationErrors, ...dataset.warnings].map((warning) => (
+            <p key={warning}>
+              <CircleAlert size={14} />
+              {warning}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {dataset.status === "needs_mapping" ? (
+        <DatasetAdapterForm dataset={dataset} />
+      ) : null}
+    </article>
+  );
+}
+
+function DatasetAdapterForm({ dataset }: { dataset: Dataset }) {
+  const forge = useReadyForge();
+  const [format, setFormat] = useState<DatasetAdapter["format"]>("text");
+  const [textField, setTextField] = useState(dataset.columns[0] ?? "");
+  const [promptField, setPromptField] = useState(dataset.columns[0] ?? "");
+  const [responseField, setResponseField] = useState(dataset.columns[1] ?? "");
+  const [messagesField, setMessagesField] = useState(
+    dataset.columns.includes("messages") ? "messages" : dataset.columns[0] ?? ""
+  );
+  const [roleField, setRoleField] = useState("role");
+  const [contentField, setContentField] = useState("content");
+
+  async function saveAdapter(event: React.FormEvent) {
+    event.preventDefault();
+    const adapter: DatasetAdapter = {
+      format,
+      roleMap: { human: "user", gpt: "assistant", bot: "assistant" },
+      canonicalVersion: "forge-chat-v1"
+    };
+    if (format === "text") adapter.textField = textField;
+    if (format === "prompt_response") {
+      adapter.promptField = promptField;
+      adapter.responseField = responseField;
+    }
+    if (format === "messages") {
+      adapter.messagesField = messagesField;
+      adapter.roleField = roleField;
+      adapter.contentField = contentField;
+    }
+    try {
+      await forge.mutate(
+        "dataset-adapter",
+        `/api/v1/datasets/${dataset.id}/adapter`,
+        { adapter }
+      );
+    } catch {
+      // ForgeProvider surfaces the request error in the shared alert.
+    }
+  }
+
+  return (
+    <form className="adapter-form" onSubmit={saveAdapter}>
+      <div className="adapter-form-title">
+        <SlidersHorizontal size={15} />
+        <span>
+          <strong>Map this schema</strong>
+          Choose how Forge should turn each source row into training data.
+        </span>
+      </div>
+      <label>
+        Record format
+        <select
+          value={format}
+          onChange={(event) =>
+            setFormat(event.target.value as DatasetAdapter["format"])
+          }
+        >
+          <option value="text">Text</option>
+          <option value="prompt_response">Prompt and response</option>
+          <option value="messages">Message array</option>
+        </select>
+      </label>
+      {format === "text" ? (
+        <ColumnSelect
+          label="Text column"
+          columns={dataset.columns}
+          value={textField}
+          onChange={setTextField}
+        />
+      ) : null}
+      {format === "prompt_response" ? (
+        <>
+          <ColumnSelect
+            label="Prompt column"
+            columns={dataset.columns}
+            value={promptField}
+            onChange={setPromptField}
+          />
+          <ColumnSelect
+            label="Response column"
+            columns={dataset.columns}
+            value={responseField}
+            onChange={setResponseField}
+          />
+        </>
+      ) : null}
+      {format === "messages" ? (
+        <>
+          <ColumnSelect
+            label="Messages column"
+            columns={dataset.columns}
+            value={messagesField}
+            onChange={setMessagesField}
+          />
+          <label>
+            Role key
+            <input value={roleField} onChange={(event) => setRoleField(event.target.value)} />
+          </label>
+          <label>
+            Content key
+            <input
+              value={contentField}
+              onChange={(event) => setContentField(event.target.value)}
+            />
+          </label>
+        </>
+      ) : null}
+      <button
+        className="button secondary"
+        type="submit"
+        disabled={forge.busy !== null}
+      >
+        {forge.busy === "dataset-adapter" ? "Validating…" : "Validate adapter"}
+      </button>
+    </form>
+  );
+}
+
+function ColumnSelect({
+  label,
+  columns,
+  value,
+  onChange
+}: {
+  label: string;
+  columns: string[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {columns.map((column) => (
+          <option value={column} key={column}>
+            {column}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function adapterSummary(adapter: DatasetAdapter) {
+  if (adapter.format === "text") return ` · ${adapter.textField}`;
+  if (adapter.format === "prompt_response") {
+    return ` · ${adapter.promptField} → ${adapter.responseField}`;
+  }
+  return ` · ${adapter.messagesField}`;
 }
 
 export function EvaluatePage() {
@@ -975,13 +1553,18 @@ function RunInspector({
 function NewRunForm() {
   const forge = useReadyForge();
   const router = useRouter();
+  const readyDatasets = forge.state.datasets.filter(
+    (dataset) => dataset.status === "ready"
+  );
+  const selectedDatasetId =
+    forge.runForm.datasetId || readyDatasets[0]?.id || "";
 
   async function startRun() {
     try {
       const result = await forge.mutate<{ run: TrainingRun }>(
         "new-run",
         "/api/sessions",
-        forge.runForm
+        { ...forge.runForm, datasetId: selectedDatasetId }
       );
       forge.selectRun(result.run.id);
       router.push("/runs");
@@ -1028,6 +1611,27 @@ function NewRunForm() {
           </select>
         </label>
         <label>
+          Dataset
+          <select
+            value={selectedDatasetId}
+            onChange={(event) =>
+              forge.setRunForm({
+                ...forge.runForm,
+                datasetId: event.target.value
+              })
+            }
+          >
+            {!readyDatasets.length ? (
+              <option value="">Add a dataset first</option>
+            ) : null}
+            {readyDatasets.map((dataset) => (
+              <option value={dataset.id} key={dataset.id}>
+                {dataset.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           Training method
           <select
             value={forge.runForm.recipe}
@@ -1066,6 +1670,7 @@ function NewRunForm() {
           disabled={
             forge.busy !== null ||
             !forge.runForm.name.trim() ||
+            !selectedDatasetId ||
             forge.runForm.targetSteps < 1
           }
         >
@@ -1073,6 +1678,13 @@ function NewRunForm() {
           {forge.busy === "new-run" ? "Starting…" : "Start run"}
         </button>
       </div>
+      {!readyDatasets.length ? (
+        <Link className="new-run-dataset-callout" href="/datasets">
+          <Database size={15} />
+          Add or link a dataset before starting a run
+          <ArrowRight size={14} />
+        </Link>
+      ) : null}
     </section>
   );
 }

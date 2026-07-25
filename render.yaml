@@ -61,12 +61,12 @@ projects:
                 value: zai-org/GLM-5.2-Fast
               - key: FORGE_TRAINING_MODEL_ID
                 value: sshleifer/tiny-gpt2
-              - key: FORGE_TRAINING_DATASET_ID
-                value: Abirate/english_quotes
-              - key: FORGE_TRAINING_DATASET_SPLIT
-                value: train[:8]
               - key: FORGE_TRAINING_MAX_STEPS
                 value: "2"
+              - key: FORGE_TRAINING_MAX_ROWS
+                value: "256"
+              - key: DATASET_BUCKET
+                value: datasets
               - key: INTERNAL_API_KEY
                 generateValue: true
 

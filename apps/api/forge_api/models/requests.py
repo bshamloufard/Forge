@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from forge_api.models.domain import RecipeId
+from forge_api.models.domain import DatasetAdapter, RecipeId
 
 
 class CreateSessionRequest(BaseModel):
@@ -10,7 +10,21 @@ class CreateSessionRequest(BaseModel):
     baseModel: str | None = Field(default=None, min_length=2)
     model: str | None = Field(default=None, min_length=2)
     recipe: RecipeId = "chat-sft"
+    datasetId: str | None = Field(default=None, min_length=1)
     targetSteps: int | None = Field(default=None, ge=1, le=5000)
+
+
+class CreateHuggingFaceDatasetRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    dataset: str = Field(min_length=3, max_length=240)
+    config: str | None = Field(default=None, max_length=160)
+    split: str | None = Field(default=None, max_length=160)
+    revision: str | None = Field(default=None, max_length=160)
+    adapter: DatasetAdapter | None = None
+
+
+class UpdateDatasetAdapterRequest(BaseModel):
+    adapter: DatasetAdapter
 
 
 class ForwardBackwardRequest(BaseModel):

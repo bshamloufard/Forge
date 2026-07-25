@@ -8,6 +8,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from forge_api.routers import (
     capabilities,
     checkpoints,
+    datasets,
     deployments,
     health,
     projects,
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(capabilities.router)
     app.include_router(providers.router)
     app.include_router(projects.router)
+    app.include_router(datasets.router)
     app.include_router(sessions.router)
     app.include_router(runs.router)
     app.include_router(sampling.router)
