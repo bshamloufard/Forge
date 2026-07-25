@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import styles from "@/app/home.module.css";
+
+export const metadata: Metadata = {
+  title: "Sign-in error"
+};
 
 const messages: Record<string, string> = {
   config:

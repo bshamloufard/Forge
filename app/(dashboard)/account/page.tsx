@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   CheckCircle2,
   CircleAlert,
@@ -16,6 +17,10 @@ import {
 import styles from "./account.module.css";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Account"
+};
 
 export default async function AccountPage() {
   const user = await requireUser();
