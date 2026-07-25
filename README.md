@@ -71,7 +71,8 @@ Implementation agents should make the app satisfy these deployment assumptions:
 - No secret with provider, database, or service-role privileges is exposed through a
   `NEXT_PUBLIC_` variable.
 - Browser calls use only `NEXT_PUBLIC_API_BASE_URL`; server-side Next proxy calls
-  use `API_INTERNAL_BASE_URL`.
+  use Render's private network via `API_INTERNAL_HOSTPORT` in production, with
+  `API_INTERNAL_BASE_URL` retained as a local-development fallback.
 - Browser Supabase access uses only
   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 - Server-only Supabase access uses `SUPABASE_SECRET_KEY` or
@@ -91,8 +92,7 @@ flow from the Render dashboard after the repository is pushed to GitHub.
    `BASETEN_BASE_URL=https://inference.baseten.co/v1`.
 4. In Render, create a new Blueprint from this repository.
 5. Fill every `sync: false` environment variable when Render prompts for secrets.
-   Set `NEXT_PUBLIC_API_BASE_URL` and `API_INTERNAL_BASE_URL` on `forge-web` to
-   the deployed `forge-api` URL.
+   Render derives `API_INTERNAL_HOSTPORT` from `forge-api` automatically.
 6. Deploy and verify:
 
 ```bash

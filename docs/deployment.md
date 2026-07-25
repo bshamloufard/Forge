@@ -61,7 +61,8 @@ The services must also implement:
 - `GET /health` on `forge-api` for Render health checks.
 - `GET /api/health` on `forge-web` as a compatibility proxy.
 - `NEXT_PUBLIC_API_BASE_URL` for browser calls from the dashboard.
-- `API_INTERNAL_BASE_URL` for server-side Next.js route proxies.
+- `API_INTERNAL_HOSTPORT` for server-side Next.js route proxies over Render's
+  private network. `API_INTERNAL_BASE_URL` remains a local fallback.
 - Server-side provider clients that read Modal, Baseten, Supabase secret, and
   database credentials only from server-side environment variables.
 - Browser Supabase clients that use only public Supabase values.
@@ -75,7 +76,7 @@ committed.
 
 Key groups:
 
-- App: `APP_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `API_INTERNAL_BASE_URL`,
+- App: `APP_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `API_INTERNAL_HOSTPORT`,
   `FORGE_STATE_PATH`, `FORGE_ALLOWED_ORIGINS`
 - Supabase browser: `NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
@@ -148,8 +149,8 @@ BASETEN_DEPLOYMENT_BASE_URL=https://model-<model-id>.api.baseten.co/environments
 3. Confirm the Blueprint reads [render.yaml](../render.yaml).
 4. Fill every `sync: false` value in the Render dashboard.
 5. Deploy `forge-api` and `forge-web`.
-6. Set `NEXT_PUBLIC_API_BASE_URL` and `API_INTERNAL_BASE_URL` on `forge-web` to
-   the deployed `forge-api` URL.
+6. Confirm Render populated `API_INTERNAL_HOSTPORT` on `forge-web` from the
+   `forge-api` private-network address.
 7. Verify health checks:
 
 ```bash
@@ -168,6 +169,26 @@ SMOKE_BASE_URL=https://<forge-api>.onrender.com npm run smoke
 ```text
 Sign in or open dashboard -> create project -> start session -> submit sample job -> view checkpoint/eval status.
 ```
+
+## Render Pro Configuration
+
+The Blueprint opts into Pro workspace capabilities while bounding compute cost:
+
+- Both production services use paid Starter instances, so they do not spin down
+  like free instances.
+- The Blueprint includes the bounded autoscaling settings next to each service.
+  Render requires the first sync to upgrade an existing free service to Starter;
+  after that sync, uncomment the `scaling` blocks to allow one to three instances
+  at 70% CPU or 75% memory utilization.
+- Pull request preview environments are manual. Add `[render preview]` to a pull
+  request title to create one; inactive previews expire after three days.
+- `Forge / Production` is protected from destructive non-admin actions and
+  isolated from private-network traffic outside the environment.
+- Deploys and scale-downs allow up to 120 seconds for graceful shutdown.
+
+Preview resources are billed while they exist. Render does not copy `sync: false`
+variables into previews, so add required preview-only credentials through a
+Render environment group before requesting a full authenticated preview.
 
 ## Current Documentation Checked
 
