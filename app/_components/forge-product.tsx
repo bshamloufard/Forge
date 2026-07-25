@@ -81,8 +81,8 @@ const apiPath = (path: string) => path;
 
 const navigation = [
   ["Train", "/runs", Activity],
-  ["Evaluate", "/evaluate", BrainCircuit],
-  ["Deploy", "/deployments", Cloud]
+  ["Deploy", "/deployments", Cloud],
+  ["Evaluate", "/evaluate", BrainCircuit]
 ] as const;
 
 const pageLabels: Record<string, string> = {
@@ -267,9 +267,10 @@ function ShellChrome({
           />
           <RuntimeRow name="Storage" configured={account.providers.storage} />
           <Link className="account-link" href="/account">
-            <span className="account-avatar" aria-hidden="true">
-              {initials(account.user.displayName)}
-            </span>
+            <AccountAvatar
+              name={account.user.displayName}
+              avatarUrl={account.user.avatarUrl}
+            />
             <span>
               <strong>{account.user.displayName}</strong>
               <small>Account & provider keys</small>
@@ -1531,6 +1532,33 @@ function initials(name: string) {
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase())
       .join("") || "F"
+  );
+}
+
+function AccountAvatar({
+  name,
+  avatarUrl
+}: {
+  name: string;
+  avatarUrl: string | null;
+}) {
+  if (avatarUrl) {
+    // Google avatar URLs are display-only metadata, never authorization data.
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        className="account-avatar"
+        src={avatarUrl}
+        alt=""
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
+  return (
+    <span className="account-avatar" aria-hidden="true">
+      {initials(name)}
+    </span>
   );
 }
 

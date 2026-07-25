@@ -1,21 +1,13 @@
 import "server-only";
 
 import { authenticateRequest } from "@/lib/auth";
+import { pythonApiBase } from "@/lib/python-api-config";
 import {
   readRequestBody,
   RequestBodyTooLargeError
 } from "@/lib/request-body";
 
 const MAX_PROXY_BODY_BYTES = 1024 * 1024;
-
-function pythonApiBase() {
-  return (
-    process.env.API_INTERNAL_BASE_URL ||
-    (process.env.APP_ENV === "production"
-      ? ""
-      : process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000")
-  ).replace(/\/$/, "");
-}
 
 export async function proxyToPython(request: Request, path: string) {
   const publicRequest = path === "/api/health" || path === "/health";

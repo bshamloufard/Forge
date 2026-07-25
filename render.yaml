@@ -1,80 +1,116 @@
-services:
-  - type: web
-    name: forge-api
-    runtime: python
-    plan: free
-    buildCommand: pip install -e apps/api -e packages/forge
-    startCommand: cd apps/api && uvicorn forge_api.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.2
-      - key: APP_ENV
-        value: production
-      - key: FORGE_STATE_PATH
-        value: /var/data/forge/state.json
-      - key: FORGE_ALLOWED_ORIGINS
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SECRET_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: DIRECT_DATABASE_URL
-        sync: false
-      - key: MODAL_APP_NAME
-        value: forge-mvp
-      - key: MODAL_ENVIRONMENT
-        value: main
-      - key: FORGE_MODAL_WORKER_REVISION
-        value: forge-worker-20260724.1
-      - key: BASETEN_BASE_URL
-        value: https://inference.baseten.co/v1
-      - key: BASETEN_MODEL_ID
-        value: zai-org/GLM-5.2-Fast
-      - key: BASETEN_DEFAULT_MODEL
-        value: zai-org/GLM-5.2-Fast
-      - key: FORGE_TRAINING_MODEL_ID
-        value: sshleifer/tiny-gpt2
-      - key: FORGE_TRAINING_DATASET_ID
-        value: Abirate/english_quotes
-      - key: FORGE_TRAINING_DATASET_SPLIT
-        value: train[:8]
-      - key: FORGE_TRAINING_MAX_STEPS
-        value: "2"
-      - key: INTERNAL_API_KEY
-        generateValue: true
-  - type: web
-    name: forge-web
-    runtime: node
-    plan: free
-    buildCommand: npm ci && npm run build
-    startCommand: npm run start
-    healthCheckPath: /api/health
-    envVars:
-      - key: NODE_VERSION
-        value: 24
-      - key: NEXT_TELEMETRY_DISABLED
-        value: "1"
-      - key: APP_ENV
-        value: production
-      - key: APP_BASE_URL
-        sync: false
-      - key: NEXT_PUBLIC_API_BASE_URL
-        value: ""
-      - key: API_INTERNAL_BASE_URL
-        sync: false
-      - key: FORGE_MODAL_WORKER_REVISION
-        value: forge-worker-20260724.1
-      - key: NEXT_PUBLIC_SUPABASE_URL
-        sync: false
-      - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-        sync: false
-      - key: INTERNAL_API_KEY
-        fromService:
-          type: web
-          name: forge-api
-          envVarKey: INTERNAL_API_KEY
+previews:
+  generation: manual
+  expireAfterDays: 3
+
+projects:
+  - name: Forge
+    environments:
+      - name: Production
+        networking:
+          isolation: enabled
+        permissions:
+          protection: enabled
+        services:
+          - type: web
+            name: forge-api
+            runtime: python
+            plan: starter
+            previews:
+              plan: starter
+            # Existing free services must first sync to Starter before Render
+            # accepts an autoscaling block. After that sync, enable:
+            # scaling:
+            #   minInstances: 1
+            #   maxInstances: 3
+            #   targetCPUPercent: 70
+            #   targetMemoryPercent: 75
+            buildCommand: pip install -e apps/api -e packages/forge
+            startCommand: cd apps/api && uvicorn forge_api.main:app --host 0.0.0.0 --port $PORT
+            healthCheckPath: /health
+            maxShutdownDelaySeconds: 120
+            envVars:
+              - key: PYTHON_VERSION
+                value: 3.12.2
+              - key: APP_ENV
+                value: production
+              - key: FORGE_STATE_PATH
+                value: /var/data/forge/state.json
+              - key: FORGE_ALLOWED_ORIGINS
+                sync: false
+              - key: SUPABASE_URL
+                sync: false
+              - key: SUPABASE_SECRET_KEY
+                sync: false
+              - key: SUPABASE_SERVICE_ROLE_KEY
+                sync: false
+              - key: DATABASE_URL
+                sync: false
+              - key: DIRECT_DATABASE_URL
+                sync: false
+              - key: MODAL_APP_NAME
+                value: forge-mvp
+              - key: MODAL_ENVIRONMENT
+                value: main
+              - key: FORGE_MODAL_WORKER_REVISION
+                value: forge-worker-20260724.1
+              - key: BASETEN_BASE_URL
+                value: https://inference.baseten.co/v1
+              - key: BASETEN_MODEL_ID
+                value: zai-org/GLM-5.2-Fast
+              - key: BASETEN_DEFAULT_MODEL
+                value: zai-org/GLM-5.2-Fast
+              - key: FORGE_TRAINING_MODEL_ID
+                value: sshleifer/tiny-gpt2
+              - key: FORGE_TRAINING_DATASET_ID
+                value: Abirate/english_quotes
+              - key: FORGE_TRAINING_DATASET_SPLIT
+                value: train[:8]
+              - key: FORGE_TRAINING_MAX_STEPS
+                value: "2"
+              - key: INTERNAL_API_KEY
+                generateValue: true
+
+          - type: web
+            name: forge-web
+            runtime: node
+            plan: starter
+            previews:
+              plan: starter
+            # Existing free services must first sync to Starter before Render
+            # accepts an autoscaling block. After that sync, enable:
+            # scaling:
+            #   minInstances: 1
+            #   maxInstances: 3
+            #   targetCPUPercent: 70
+            #   targetMemoryPercent: 75
+            buildCommand: npm ci && npm run build
+            startCommand: npm run start
+            healthCheckPath: /api/health
+            maxShutdownDelaySeconds: 120
+            envVars:
+              - key: NODE_VERSION
+                value: 24
+              - key: NEXT_TELEMETRY_DISABLED
+                value: "1"
+              - key: APP_ENV
+                value: production
+              - key: APP_BASE_URL
+                sync: false
+              - key: NEXT_PUBLIC_API_BASE_URL
+                value: ""
+              - key: API_INTERNAL_HOSTPORT
+                fromService:
+                  type: web
+                  name: forge-api
+                  property: hostport
+              - key: FORGE_MODAL_WORKER_REVISION
+                value: forge-worker-20260724.1
+              - key: NEXT_PUBLIC_SUPABASE_URL
+                sync: false
+              - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+                sync: false
+              - key: INTERNAL_API_KEY
+                fromService:
+                  type: web
+                  name: forge-api
+                  envVarKey: INTERNAL_API_KEY

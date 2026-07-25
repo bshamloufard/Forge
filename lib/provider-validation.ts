@@ -1,5 +1,7 @@
 import "server-only";
 
+import { pythonApiBase } from "@/lib/python-api-config";
+
 type ProviderConfigurationInput = {
   modalTokenId: string;
   modalTokenSecret: string;
@@ -179,12 +181,7 @@ export async function retryModalSetup(
 }
 
 function providerService() {
-  const apiBase = (
-    process.env.API_INTERNAL_BASE_URL ||
-    (process.env.APP_ENV === "production"
-      ? ""
-      : process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000")
-  ).replace(/\/$/, "");
+  const apiBase = pythonApiBase();
   const internalKey = process.env.INTERNAL_API_KEY?.trim();
   if (!apiBase || (process.env.APP_ENV === "production" && !internalKey)) {
     return null;
